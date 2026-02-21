@@ -69,6 +69,7 @@ cd YOUR_PROJECT_NAME
 ./scripts/init \
   --project-name YOUR_PROJECT_NAME \
   --owner YOUR_TEAM_OR_OWNER \
+  --description "プロジェクトの説明" \
   --runtime-mode docker \
   --docker-image your-image:tag
 ```
@@ -115,7 +116,7 @@ project:
 runtime:
   mode: "docker"            # "docker" | "host"
   docker_image: ""          # mode=docker の場合必須
-  host_setup_steps: []      # mode=host の場合推奨
+  host_setup_steps: []      # mode=host の場合推奨（例: ["python -m venv .venv", "..."]）
 
 commands:
   format: ""                # 任意
@@ -129,12 +130,12 @@ features:
   secret_scan: true
   dependency_scan: true
   guardrail: true
-  lcg: false
+  lcg: false                # Learning Content Generator（コミット教材化）
 
 policy:
-  allow_skip_typecheck: true
-  max_diff_warning: 1200    # 行数目安（警告のみ）
-  max_file_warning: 30      # ファイル数目安（警告のみ）
+  allow_skip_typecheck: true  # true の場合、typecheck 空でも OK（.ai-context.md に理由を記載）
+  max_diff_warning: 1200      # 行数目安（警告のみ）
+  max_file_warning: 30        # ファイル数目安（警告のみ）
 ```
 
 > **運用ルール**：`commands.lint` と `commands.test` は必ず埋める。`typecheck` が無い言語は空で OK（理由を `.ai-context.md` に記載）。`runtime.mode=docker` を推奨。
@@ -145,14 +146,14 @@ policy:
 
 | サブコマンド | 説明 |
 |-------------|------|
-| `scripts/run format` | コードフォーマット |
-| `scripts/run lint` | リンター実行 |
-| `scripts/run typecheck` | 型チェック |
-| `scripts/run test` | テスト実行 |
-| `scripts/run build` | ビルド |
-| `scripts/run ci` | 標準 CI（lint → typecheck → test） |
-| `scripts/run doctor` | 設定不足・環境不足の診断 |
-| `scripts/run print-config` | 最終的に解釈された設定を表示 |
+| `./scripts/run format` | コードフォーマット |
+| `./scripts/run lint` | リンター実行 |
+| `./scripts/run typecheck` | 型チェック |
+| `./scripts/run test` | テスト実行 |
+| `./scripts/run build` | ビルド |
+| `./scripts/run ci` | 標準 CI（lint → typecheck → test） |
+| `./scripts/run doctor` | 設定不足・環境不足の診断 |
+| `./scripts/run print-config` | 最終的に解釈された設定を表示 |
 
 ---
 
