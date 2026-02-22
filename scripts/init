@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+
+import argparse
+import sys
+import os
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+CONFIG_FILE = os.path.join(ROOT_DIR, 'os-template.yml')
+
+def check_already_initialized(force):
+    """
+    os-template.yml を読み込み、すでに YOUR_PROJECT_NAME が置換されているか確認する。
+    """
+    if not os.path.exists(CONFIG_FILE):
+        return False
+        
+    with open(CONFIG_FILE, 'r') as f:
+        content = f.read()
+        
+    if 'name: "YOUR_PROJECT_NAME"' not in content:
+        if force:
+            print("Warning: os-template.yml is already initialized. Overwriting because --force was provided.")
+            return False
+        else:
+            print("Error: os-template.yml is already initialized.")
+            print("To overwrite the existing configuration, run with the --force flag.")
+            return True
+    return False
+
+def interactive_prompt():
+    print("Welcome to Project Instance Initialization.")
+    print("Please provide the following details.")
+    
+    project_name = input("Project Name: ").strip()
+    while not project_name:
+        project_name = input("Project Name (required): ").strip()
+        
+    owner = input("Team or Owner: ").strip()
+    while not owner:
+        owner = input("Team or Owner (required): ").strip()
+        
+    description = input("Description: ").strip()
+    
+    while True:
+        runtime_mode = input("Runtime Mode (docker or host) [docker]: ").strip()
+        if not runtime_mode:
+            runtime_mode = "docker"
+        if runtime_mode in ["docker", "host"]:
+            break
+        print("Invalid mode. Please enter 'docker' or 'host'.")
+        
+    docker_image = ""
+    if runtime_mode == "docker":
+        while not docker_image:
+            docker_image = input("Docker Image (e.g., python:3.11): ").strip()
+            if not docker_image:
+                print("Docker image is required for docker mode.")
+    
+    return project_name, owner, description, runtime_mode, docker_image, False
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Initialize the project instance (os-template.yml, README.md, .ai-context.md).")
+    parser.add_argument("--project-name", help="Name of the project")
+    parser.add_argument("--owner", help="Team or Owner of the project")
+    parser.add_argument("--description", help="Description of the project", default="")
+    parser.add_argument("--runtime-mode", choices=["docker", "host"], help="Runtime mode (docker or host)")
+    parser.add_argument("--docker-image", help="Docker image (required if runtime-mode is docker)")
+    parser.add_argument("--force", action="store_true", help="Force initialization even if already initialized")
+    
+    args = parser.parse_args()
+    
+    # Check if any argument was provided. If not, use interactive mode.
+    # sys.argv[1:] counts arguments minus script name
+    if len(sys.argv) == 1:
+        return interactive_prompt()
+        
+    # Validation
+    missing = []
+    if not args.project_name:
+        missing.append("--project-name")
+    if not args.owner:
+        missing.append("--owner")
+    if not args.runtime_mode:
+        missing.append("--runtime-mode")
+        
+    if args.runtime_mode == "docker" and not args.docker_image:
+        missing.append("--docker-image (required for docker mode)")
+        
+    if missing:
+        print("Error: Missing required arguments.")
+        for m in missing:
+            print(f"  - {m}")
+        print("\nNext step: Please provide the missing arguments as shown below or run without arguments for interactive mode:")
+        if args.runtime_mode == "docker":
+            print("  ./scripts/init --project-name <name> --owner <owner> --runtime-mode docker --docker-image <image>")
+        else:
+            print("  ./scripts/init --project-name <name> --owner <owner> --runtime-mode docker|host")
+        sys.exit(1)
+        
+    return args.project_name, args.owner, args.description, args.runtime_mode, args.docker_image, args.force
+
+def main():
+    project_name, owner, description, runtime_mode, docker_image, force = parse_args()
+    
+    if check_already_initialized(force):
+        sys.exit(1)
+        
+    print(f"Initialization arguments parsed successfully.")
+    print(f"- Project: {project_name}")
+    print(f"- Owner: {owner}")
+    print(f"- Mode: {runtime_mode}")
+
+if __name__ == "__main__":
+    main()
