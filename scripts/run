@@ -36,8 +36,15 @@ def get_val(file, path):
             if in_section:
                 m = re.match(r'^\s+' + re.escape(key) + r':\s*(.*)$', line)
                 if m:
-                    val = m.group(1).split('#')[0].strip()
-                    if len(val) >= 2 and val[0] in '\"\'': val = val[1:-1]
+                    val = m.group(1).strip()
+                    if val.startswith(\'"\'):
+                        end_idx = val.find(\'"\', 1)
+                        if end_idx != -1: val = val[1:end_idx]
+                    elif val.startswith("\'"):
+                        end_idx = val.find("\'", 1)
+                        if end_idx != -1: val = val[1:end_idx]
+                    else:
+                        val = val.split(\' #\')[0].strip()
                     print(val)
                     return
     print('')
@@ -71,7 +78,9 @@ run_doctor() {
     fi
     
     local mode=$(get_yaml_value "runtime.mode")
-    if [ "${mode}" = "docker" ]; then
+    if [ "${mode}" != "docker" ] && [ "${mode}" != "host" ]; then
+        missing_params+=("runtime.mode (must be 'docker' or 'host')")
+    elif [ "${mode}" = "docker" ]; then
         local docker_image=$(get_yaml_value "runtime.docker_image")
         if [ -z "${docker_image}" ]; then
             missing_params+=("runtime.docker_image (required for docker mode)")
@@ -86,6 +95,15 @@ run_doctor() {
         exit 1
     else
         echo "Doctor check passed. os-template.yml is correctly configured."
+        
+        local proj_name=$(get_yaml_value "project.name")
+        if [ "${proj_name}" = "YOUR_PROJECT_NAME" ] || [ -z "${proj_name}" ]; then
+            echo "Warning: project.name is still set to placeholder 'YOUR_PROJECT_NAME'."
+        fi
+        local proj_owner=$(get_yaml_value "project.owner")
+        if [ "${proj_owner}" = "YOUR_TEAM_OR_OWNER" ] || [ -z "${proj_owner}" ]; then
+            echo "Warning: project.owner is still set to placeholder 'YOUR_TEAM_OR_OWNER'."
+        fi
     fi
 }
 
@@ -133,13 +151,17 @@ COMMAND="$1"
 shift || true
 
 case "$COMMAND" in
+    help|--help|-h|"")
+        show_help
+        exit 0
+        ;;
     doctor)
         run_doctor
         ;;
     format|lint|typecheck|test|build)
         cmd_str=$(get_yaml_value "commands.${COMMAND}")
         if [ -n "${cmd_str}" ]; then
-            if [ "${cmd_str}" = "echo 'skip'" ]; then
+            if [ "${cmd_str}" = "echo 'skip'" ] || [ "${cmd_str}" = "echo \"skip\"" ]; then
                 echo "Skipping ${COMMAND} as configured in os-template.yml"
                 exit 0
             fi
@@ -178,21 +200,29 @@ case "$COMMAND" in
         ;;
     print-config)
         echo "Parsed Configuration from os-template.yml:"
+        echo "--- project ---"
+        echo "  project.name         : $(get_yaml_value 'project.name')"
+        echo "  project.owner        : $(get_yaml_value 'project.owner')"
+        echo "--- runtime ---"
         echo "  runtime.mode         : $(get_yaml_value 'runtime.mode')"
         echo "  runtime.docker_image : $(get_yaml_value 'runtime.docker_image')"
+        echo "--- commands ---"
         echo "  commands.format      : $(get_yaml_value 'commands.format')"
         echo "  commands.lint        : $(get_yaml_value 'commands.lint')"
         echo "  commands.typecheck   : $(get_yaml_value 'commands.typecheck')"
         echo "  commands.test        : $(get_yaml_value 'commands.test')"
         echo "  commands.build       : $(get_yaml_value 'commands.build')"
         echo "  commands.ci          : $(get_yaml_value 'commands.ci')"
+        echo "--- features ---"
+        echo "  features.secret_scan : $(get_yaml_value 'features.secret_scan')"
+        echo "  features.guardrail   : $(get_yaml_value 'features.guardrail')"
+        echo "--- policy ---"
+        echo "  policy.allow_skip_typecheck: $(get_yaml_value 'policy.allow_skip_typecheck')"
         ;;
     *)
+        echo "Unknown command: $COMMAND"
+        echo ""
         show_help
-        if [ -n "$COMMAND" ]; then
-            echo "Unknown command: $COMMAND"
-            exit 1
-        fi
-        exit 0
+        exit 1
         ;;
 esac
