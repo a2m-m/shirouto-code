@@ -13,7 +13,8 @@ AI_CONTEXT_FILE = os.path.join(ROOT_DIR, '.ai-context.md')
 def get_safe_yaml_string(val):
     if val is None:
         return ""
-    return val.replace('"', '\\"')
+    # Escape backslashes first, then quotes
+    return val.replace('\\', '\\\\').replace('"', '\\"')
 
 def check_already_initialized(force):
     """
@@ -22,7 +23,7 @@ def check_already_initialized(force):
     if not os.path.exists(CONFIG_FILE):
         return False
         
-    with open(CONFIG_FILE, 'r') as f:
+    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
         content = f.read()
         
     # Check if the placeholder name still exists
@@ -79,7 +80,6 @@ def parse_args():
     args = parser.parse_args()
     
     # Check if any argument other than --force was provided. If not, use interactive mode.
-    # sys.argv[1:] counts arguments minus script name
     provided_args = [arg for arg in sys.argv[1:] if arg != "--force"]
     if len(provided_args) == 0:
         return interactive_prompt(args.force)
@@ -113,30 +113,28 @@ def update_os_template(project_name, owner, description, runtime_mode, docker_im
         print(f"Error: {CONFIG_FILE} not found. Are you in the correct directory?")
         sys.exit(1)
         
-    with open(CONFIG_FILE, 'r') as f:
+    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
         content = f.read()
         
-    # Escape quotes to prevent YAML injection
+    # Escape quotes and backslashes to prevent YAML injection
     safe_name = get_safe_yaml_string(project_name)
     safe_owner = get_safe_yaml_string(owner)
     safe_desc = get_safe_yaml_string(description)
     safe_image = get_safe_yaml_string(docker_image)
         
-    # Replace project info
-    content = re.sub(r'name:\s*"YOUR_PROJECT_NAME"', f'name: "{safe_name}"', content)
-    content = re.sub(r'owner:\s*"YOUR_TEAM_OR_OWNER"', f'owner: "{safe_owner}"', content)
+    # Use lambda to prevent re.sub from interpreting backslashes in the replacement string
+    content = re.sub(r'^(\s*)name:\s*".*"', lambda m: f'{m.group(1)}name: "{safe_name}"', content, count=1, flags=re.MULTILINE)
+    content = re.sub(r'^(\s*)owner:\s*".*"', lambda m: f'{m.group(1)}owner: "{safe_owner}"', content, count=1, flags=re.MULTILINE)
     
-    # Use split and join to ensure we only replace the first occurrence of empty description (in project section)
-    parts = content.split('description: ""', 1)
-    if len(parts) == 2:
-        content = parts[0] + f'description: "{safe_desc}"' + parts[1]
+    # Description
+    content = re.sub(r'^(\s*)description:\s*".*"', lambda m: f'{m.group(1)}description: "{safe_desc}"', content, count=1, flags=re.MULTILINE)
     
     # Replace runtime info
-    content = re.sub(r'mode:\s*"docker"', f'mode: "{runtime_mode}"', content)
+    content = re.sub(r'^(\s*)mode:\s*".*"', lambda m: f'{m.group(1)}mode: "{runtime_mode}"', content, count=1, flags=re.MULTILINE)
     if runtime_mode == 'docker' and safe_image:
-        content = re.sub(r'docker_image:\s*""', f'docker_image: "{safe_image}"', content)
+        content = re.sub(r'^(\s*)docker_image:\s*".*"', lambda m: f'{m.group(1)}docker_image: "{safe_image}"', content, count=1, flags=re.MULTILINE)
 
-    with open(CONFIG_FILE, 'w') as f:
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         f.write(content)
         
     print(f"Updated: {CONFIG_FILE}")
@@ -146,15 +144,19 @@ def update_readme(project_name, owner):
         print(f"Warning: {README_FILE} not found.")
         return
         
-    with open(README_FILE, 'r') as f:
-        content = f.read()
+    with open(README_FILE, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
         
-    # Replace all occurrences to make Quickstart copy-pasteable for the specific instance
-    content = content.replace("YOUR_PROJECT_NAME", project_name)
-    content = content.replace("YOUR_TEAM_OR_OWNER", owner)
+    # Strictly limit replacement to the specific header line
+    # to avoid changing Quickstart code examples.
+    # We look for the line starting with "> **" which acts as the title block.
+    for i, line in enumerate(lines):
+        if line.startswith("> **") and "—" in line:
+            lines[i] = f"> **{project_name}** — {owner}\n"
+            break
             
-    with open(README_FILE, 'w') as f:
-        f.write(content)
+    with open(README_FILE, 'w', encoding='utf-8') as f:
+        f.writelines(lines)
         
     print(f"Updated: {README_FILE}")
 
@@ -163,7 +165,7 @@ def update_ai_context():
         print(f"Warning: {AI_CONTEXT_FILE} not found.")
         return
         
-    with open(AI_CONTEXT_FILE, 'r') as f:
+    with open(AI_CONTEXT_FILE, 'r', encoding='utf-8') as f:
         content = f.read()
         
     # Initialize Status section
@@ -171,15 +173,13 @@ def update_ai_context():
     content = content.replace('| 補足 | `TODO: 状態の補足（例：CI緑、テスト未整備、etc.）` |', '| 補足 | `Initial instance setup` |')
     
     # Explicitly initialize Commands section formatting to ensure AC4 is met precisely
-    # AC4 states "Commands セクションが TODO 形式で初期化される"
-    # Even though the template has TODOs, we can add a specific hint message to ensure it's "initialized"
     if "## 6. Commands" in content:
         content = content.replace(
             "<!-- TODO: プロジェクトで使用するコマンドを記載する。os-template.yml の commands.* と対応させる -->",
             "<!-- TODO: プロジェクトで使用するコマンドを記載する。os-template.yml の commands.* と対応させる -->\n<!-- INSTRUCTOR NOTE: scripts/init 経由で初期化されました。使用する言語に合わせて以下のTODOコマンドを更新してください -->"
         )
     
-    with open(AI_CONTEXT_FILE, 'w') as f:
+    with open(AI_CONTEXT_FILE, 'w', encoding='utf-8') as f:
         f.write(content)
         
     print(f"Initialized: {AI_CONTEXT_FILE}")
