@@ -14,6 +14,4 @@
 <!-- TODO: システムを構成する主要なモジュールや機能ブロックとその役割を記載してください。 -->
 
 ## 重要な設計判断 (ADR へのリンク)
-<!-- TODO: ここには重要な architecture decision record へのリンクを記載してください。
-- [例: 0001-template-contract](decisions/0001-template-contract.md)
--->
+- [0001-template-contract](decisions/0001-template-contract.md): TemplateとInstanceの境界コントラクト定義

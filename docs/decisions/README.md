@@ -30,4 +30,11 @@ Proposed (提案中) / Accepted (承認済) / Deprecated (非推奨) / Supersede
 ```
 
 ## 一覧管理ルール
-新しいADRを追加した際は、必要に応じて `docs/architecture.md` からの参照リンクを追加し、システム全体からアクセスしやすい状態を保ってください。
+新しいADRを追加した際は、以下のテーブルおよび必要に応じて `docs/architecture.md` からの参照リンクを追加し、システム全体からアクセスしやすい状態を保ってください。
+
+### 既存の ADR 一覧
+
+| 番号 | タイトル | ステータス | 概要 |
+| --- | --- | --- | --- |
+| [0001](0001-template-contract.md) | template-contract | Accepted | TemplateとInstanceの境界コントラクト定義 |
+
