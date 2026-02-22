@@ -6,6 +6,8 @@ import os
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 CONFIG_FILE = os.path.join(ROOT_DIR, 'os-template.yml')
+README_FILE = os.path.join(ROOT_DIR, 'README.md')
+AI_CONTEXT_FILE = os.path.join(ROOT_DIR, '.ai-context.md')
 
 def check_already_initialized(force):
     """
@@ -74,7 +76,6 @@ def parse_args():
     if len(sys.argv) == 1:
         return interactive_prompt()
         
-    # Validation
     missing = []
     if not args.project_name:
         missing.append("--project-name")
@@ -97,7 +98,84 @@ def parse_args():
             print("  ./scripts/init --project-name <name> --owner <owner> --runtime-mode docker|host")
         sys.exit(1)
         
-    return args.project_name, args.owner, args.description, args.runtime_mode, args.docker_image, args.force
+    return args.project_name, args.owner, args.description or "", args.runtime_mode, args.docker_image or "", args.force
+
+def update_os_template(project_name, owner, description, runtime_mode, docker_image):
+    if not os.path.exists(CONFIG_FILE):
+        print(f"Error: {CONFIG_FILE} not found. Are you in the correct directory?")
+        sys.exit(1)
+        
+    with open(CONFIG_FILE, 'r') as f:
+        content = f.read()
+        
+    # Replace project info
+    content = content.replace('name: "YOUR_PROJECT_NAME"', f'name: "{project_name}"')
+    content = content.replace('owner: "YOUR_TEAM_OR_OWNER"', f'owner: "{owner}"')
+    # Use split and join to ensure we only replace the first occurrence of empty description (in project section)
+    parts = content.split('description: ""', 1)
+    if len(parts) == 2:
+        content = parts[0] + f'description: "{description}"' + parts[1]
+    
+    # Replace runtime info
+    content = content.replace('mode: "docker"', f'mode: "{runtime_mode}"')
+    if runtime_mode == 'docker' and docker_image:
+        content = content.replace('docker_image: ""', f'docker_image: "{docker_image}"')
+
+    with open(CONFIG_FILE, 'w') as f:
+        f.write(content)
+        
+    print(f"Updated: {CONFIG_FILE}")
+
+def update_readme(project_name, owner):
+    if not os.path.exists(README_FILE):
+        print(f"Warning: {README_FILE} not found.")
+        return
+        
+    with open(README_FILE, 'r') as f:
+        lines = f.readlines()
+        
+    # We only want to replace the first specific header line
+    for i, line in enumerate(lines):
+        if line.startswith("> **YOUR_PROJECT_NAME** — YOUR_TEAM_OR_OWNER"):
+            lines[i] = f"> **{project_name}** — {owner}\n"
+            break
+            
+    with open(README_FILE, 'w') as f:
+        f.writelines(lines)
+        
+    print(f"Updated: {README_FILE}")
+
+def update_ai_context():
+    if not os.path.exists(AI_CONTEXT_FILE):
+        print(f"Warning: {AI_CONTEXT_FILE} not found.")
+        return
+        
+    with open(AI_CONTEXT_FILE, 'r') as f:
+        content = f.read()
+        
+    # Initialize Status section
+    content = content.replace('| 全体 | `TODO: works / broken` |', '| 全体 | `works` |')
+    content = content.replace('| 補足 | `TODO: 状態の補足（例：CI緑、テスト未整備、etc.）` |', '| 補足 | `Initial instance setup` |')
+    
+    with open(AI_CONTEXT_FILE, 'w') as f:
+        f.write(content)
+        
+    print(f"Initialized: {AI_CONTEXT_FILE}")
+
+def print_next_steps(runtime_mode):
+    print("\n" + "="*50)
+    print("Instance Initialization Successful!")
+    print("="*50)
+    print("\nNext steps (Copy and paste to create your first PR):")
+    print("\n" + "-"*40)
+    print("git checkout -b setup/init")
+    print("git add -A")
+    print('git commit -m "chore: 初期セットアップ (scripts/init)"')
+    print("git push origin setup/init")
+    print("-"*40 + "\n")
+    if runtime_mode == 'host':
+        print("Note: You selected 'host' runtime mode.")
+        print("Please make sure to add your setup scripts to 'host_setup_steps' in os-template.yml.")
 
 def main():
     project_name, owner, description, runtime_mode, docker_image, force = parse_args()
@@ -105,10 +183,13 @@ def main():
     if check_already_initialized(force):
         sys.exit(1)
         
-    print(f"Initialization arguments parsed successfully.")
-    print(f"- Project: {project_name}")
-    print(f"- Owner: {owner}")
-    print(f"- Mode: {runtime_mode}")
+    print(f"Initializing project '{project_name}'...")
+    
+    update_os_template(project_name, owner, description, runtime_mode, docker_image)
+    update_readme(project_name, owner)
+    update_ai_context()
+    
+    print_next_steps(runtime_mode)
 
 if __name__ == "__main__":
     main()
