@@ -17,10 +17,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
       - name: Check if guardrail is enabled
         id: check
         run: |
-          if grep -E "^[[:space:]]*guardrail:[[:space:]]*true" os-template.yml > /dev/null; then
+          if awk '/^features:/ {in_features=1} /^policy:/ {in_features=0} in_features && /^[[:space:]]*guardrail:[[:space:]]*true/ {found=1} END {exit !found}' os-template.yml; then
             echo "enabled=true" >> $GITHUB_OUTPUT
             echo "Guardrail is enabled in os-template.yml."
           else
