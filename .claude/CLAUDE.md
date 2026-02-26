@@ -68,3 +68,12 @@
 - Antigravity向けの内容だった場合 → 「これはAntigravity側のルールです」とユーザーに伝える
 
 ---
+
+## AntigravityからのJSON出力レビュー依頼への対応
+
+Antigravity からターミナル（`claude -p`）経由でレビュー依頼を受けた場合：
+- プロンプトで指定された出力形式（JSON等）に厳密に従い、他の不要なテキストやMarkdownコードブロックの枠（\`\`\`json 等）を含めないこと。
+- レビュー観点は自分で設計すること（`/review` スキルの手順に準拠）
+- Guardrail コメント規格（Severity / Finding / Why / Fix direction）を守ること
+
+---
