@@ -7,6 +7,8 @@ import tempfile
 import urllib.request
 import urllib.error
 import json
+import socket
+from datetime import datetime
 
 
 def run_command(cmd, shell=False):
@@ -26,11 +28,8 @@ def get_pr_number():
         return res.stdout.strip()
     return None
 
-def get_diff_text(pr_number=None):
+def get_diff_text(pr_number):
     # 1. ワークスペース上で現在の PR を取得 (gh pr view)
-    if not pr_number:
-        pr_number = get_pr_number()
-            
     if pr_number:
         res = run_command(["gh", "pr", "diff", str(pr_number)])
         if res.returncode == 0 and res.stdout.strip():
@@ -129,6 +128,8 @@ def generate_learning_content(is_huge, diff_text):
 以下のJSONスキーマに従い、JSONのみを出力してください（Markdownのコードブロックなども許容しますが、中身は純粋なJSONとして生成してください）。
 空の配列や空文字列も適宜使用してください。
 
+差分データは <diff> と </diff> のタグで囲んで提供します。
+
 ```json
 {{
   "Summary": "変更の全体的な要約",
@@ -138,10 +139,9 @@ def generate_learning_content(is_huge, diff_text):
 }}
 ```
 
-Diff:
-```diff
+<diff>
 {safe_diff_text}
-```
+</diff>
 """
 
     data = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -155,7 +155,7 @@ Diff:
     )
     
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=30) as response:
             result = json.loads(response.read().decode("utf-8"))
             try:
                 text = result["candidates"][0]["content"]["parts"][0]["text"]
@@ -332,9 +332,10 @@ def main():
 
     # Save and commit Long Form Doc
     res_hash = run_command(["git", "rev-parse", "--short", "HEAD"])
-    hash_val = res_hash.stdout.strip() if res_hash.returncode == 0 else "unknown"
+    hash_val = res_hash.stdout.strip() if res_hash.returncode == 0 else f"unknown-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     
-    doc_body = format_asset_doc(parsed_data, hash_val)
+    context_name = f"PR #{pr_number}" if pr_number else f"Commit {hash_val}"
+    doc_body = format_asset_doc(parsed_data, context_name)
     commit_asset(doc_body, hash_val)
     
     sys.exit(0)
