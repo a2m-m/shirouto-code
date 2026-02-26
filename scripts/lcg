@@ -4,6 +4,9 @@ import sys
 import subprocess
 import re
 import tempfile
+import urllib.request
+import urllib.error
+import json
 
 
 def run_command(cmd, shell=False):
@@ -12,6 +15,43 @@ def run_command(cmd, shell=False):
         cmd = shlex.split(cmd)
     result = subprocess.run(cmd, shell=shell, capture_output=True, text=True)
     return result
+
+def get_diff_text():
+    # 1. ワークスペース上で現在の PR を取得 (gh pr view)
+    pr_number = None
+    github_ref = os.environ.get("GITHUB_REF", "")
+    if github_ref.startswith("refs/pull/"):
+        pr_number = github_ref.split("/")[2]
+        
+    if not pr_number:
+        res = run_command("gh pr view --json number -q .number")
+        if res.returncode == 0:
+            pr_number = res.stdout.strip()
+            
+    if pr_number:
+        res = run_command(f"gh pr diff {pr_number}")
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout
+        else:
+            print("Fallback: get_diff_text 'gh pr diff' failed or empty.")
+    else:
+        print("Fallback: get_diff_text could not determine PR number.")
+            
+    # 2. PRが取得できなければローカルの origin/mainからの差分
+    res = run_command("git diff origin/main...HEAD")
+    if res.returncode == 0 and res.stdout.strip():
+        return res.stdout
+    else:
+        print("Fallback: get_diff_text 'git diff origin/main...HEAD' failed or empty.")
+        
+    # 3. それでも無ければ現在のワーキングツリーの差分
+    res = run_command("git diff HEAD")
+    if res.returncode == 0 and res.stdout.strip():
+        return res.stdout
+    else:
+        print("Fallback: get_diff_text 'git diff HEAD' failed or empty.")
+        
+    return ""
 
 def get_config():
     config = {'policy': {'max_diff_warning': 1200}}
@@ -52,25 +92,105 @@ def is_huge_diff(config):
     return total_diff > max_diff_warning
 
 def get_ai_lcg_mock(is_huge):
-    # Mocking AI response based on diff size (Huge diff = prioritize summary)
+    # Mocking AI response mapping to the expected dict
     if is_huge:
-        return """
-Summary: 巨大な変更があったため要約を優先します。多数のファイルの追加変更が行われました。
-Quiz 1: 巨大なコミットを責務ごとに分割するための基準は何ですか？
-Quiz 2: この変更による影響範囲を抑えるために、CIでどのテストが重要になりますか？
-Explore next: 巨大なPRを避けるための設計の分割方法について
-"""
+        return {
+            "Summary": "巨大な変更があったため要約を優先します。多数のファイルの追加変更が行われました。",
+            "Deep Dive": [],
+            "Quiz": [
+                "巨大なコミットを責務ごとに分割するための基準は何ですか？",
+                "この変更による影響範囲を抑えるために、CIでどのテストが重要になりますか？"
+            ],
+            "Explore next": "巨大なPRを避けるための設計の分割方法について"
+        }
     else:
-        return """
-Summary: 設定ファイルの追加とLCGワークフローの骨格が整備されました。
-Deep Dive:
-- `.github/workflows/lcg.yml`: OSのフィーチャーフラグに基づいて動作を切り替える設計パターンです。
-Quiz 1: `features.lcg` が `false` の場合にワークフローがスキップされる仕組みはどのように実装されていますか？
-Quiz 2: Github Actions における `contents: write` 権限の用途は何ですか？
-Explore next: AIがソースコードをコンテキスト付きで解釈するための最適なプロンプト設計について
+        return {
+            "Summary": "設定ファイルの追加とLCGワークフローの骨格が整備されました。",
+            "Deep Dive": [
+                "`.github/workflows/lcg.yml`: OSのフィーチャーフラグに基づいて動作を切り替える設計パターンです。"
+            ],
+            "Quiz": [
+                "`features.lcg` が `false` の場合にワークフローがスキップされる仕組みはどのように実装されていますか？",
+                "Github Actions における `contents: write` 権限の用途は何ですか？"
+            ],
+            "Explore next": "AIがソースコードをコンテキスト付きで解釈するための最適なプロンプト設計について"
+        }
+
+def generate_learning_content(is_huge, diff_text):
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("GEMINI_API_KEY is not set. Using mock for local testing.")
+        return get_ai_lcg_mock(is_huge)
+
+    if not diff_text.strip():
+        print("No diff found. Skipping AI content generation.")
+        return None
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    
+    huge_instruction = ""
+    if is_huge:
+        huge_instruction = "今回の変更は非常に大きいため、要約（Summary）を特に重視し、その他の項目は簡潔にまとめてください。\\n"
+        if len(diff_text) > 50000:
+            diff_text = diff_text[:50000] + "\n... (Diff truncated due to size limit)"
+
+    prompt = f"""
+あなたは優秀なプログラミング講師です。以下のコード差分を解析し、学習コンテンツをJSON形式で生成してください。
+{huge_instruction}
+
+以下のJSONスキーマに従い、JSONのみを出力してください（Markdownのコードブロックなども許容しますが、中身は純粋なJSONとして生成してください）。
+空の配列や空文字列も適宜使用してください。
+
+```json
+{{
+  "Summary": "変更の全体的な要約",
+  "Deep Dive": ["詳細な技術的解説1", "詳細な技術的解説2"],
+  "Quiz": ["変更内容に関する理解度確認クイズ1", "理解度確認クイズ2"],
+  "Explore next": "この変更に関連して次に学ぶべきトピックや関連技術"
+}}
+```
+
+Diff:
+```diff
+{diff_text}
+```
 """
 
-def parse_ai_response(response_text):
+    data = {"contents": [{"parts": [{"text": prompt}]}]}
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(data).encode("utf-8"),
+        headers={"Content-Type": "application/json"}
+    )
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            try:
+                text = result["candidates"][0]["content"]["parts"][0]["text"]
+            except (KeyError, IndexError, TypeError) as e:
+                print(f"Failed to extract text from Gemini response structure: {result}")
+                return get_ai_lcg_mock(is_huge)
+                
+            text = text.strip()
+            if text.startswith("```json"):
+                text = text[7:]
+            if text.startswith("```"):
+                text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+            return json.loads(text)
+    except urllib.error.HTTPError as e:
+        print(f"HTTP {e.code}: {e.reason}\n{e.read().decode('utf-8')}")
+        return get_ai_lcg_mock(is_huge)
+    except Exception as e:
+        print(f"Failed to call Gemini API or parse response: {e}")
+        if hasattr(e, 'read'):
+            print(e.read().decode('utf-8'))
+        return get_ai_lcg_mock(is_huge)
+
+def parse_ai_response(response_data):
     data = {
         "Summary": "",
         "Deep Dive": [],
@@ -78,36 +198,15 @@ def parse_ai_response(response_text):
         "Explore next": ""
     }
     
-    # 簡易パース処理
-    lines = response_text.strip().split('\n')
-    current_section = None
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-            
-        if line.startswith("Summary:"):
-            current_section = "Summary"
-            data["Summary"] = line.replace("Summary:", "").strip()
-        elif line.startswith("Deep Dive:"):
-            current_section = "Deep Dive"
-        elif line.startswith(("-", "*", "•")) and current_section == "Deep Dive":
-            data["Deep Dive"].append(line.lstrip("-*• ").strip())
-        elif line.startswith("Quiz"):
-            current_section = "Quiz"
-            q_match = re.search(r'Quiz \d+:(.*)', line)
-            if q_match:
-                 data["Quiz"].append(q_match.group(1).strip())
-        elif line.startswith("Explore next:"):
-            current_section = "Explore next"
-            data["Explore next"] = line.replace("Explore next:", "").strip()
-        else:
-            if current_section == "Summary":
-                data["Summary"] += "\n" + line
-            elif current_section == "Explore next":
-                 data["Explore next"] += "\n" + line
-                 
+    if isinstance(response_data, dict):
+        for key in data.keys():
+            if key in response_data:
+                data[key] = response_data[key]
+            elif key.lower() in response_data:
+                data[key] = response_data[key.lower()]
+    else:
+        print(f"Warning: AI response is not a valid dict: {response_data}")
+                
     return data
 
 def format_pr_comment(parsed_data):
@@ -206,8 +305,13 @@ def main():
     config = get_config()
     huge_diff = is_huge_diff(config)
     
-    # Get mock AI output
-    ai_output = get_ai_lcg_mock(huge_diff)
+    diff_text = get_diff_text()
+    
+    # Get AI output
+    ai_output = generate_learning_content(huge_diff, diff_text)
+    if not ai_output:
+        print("Exiting as no AI output was generated.")
+        sys.exit(0)
     
     # Parse output
     parsed_data = parse_ai_response(ai_output)
