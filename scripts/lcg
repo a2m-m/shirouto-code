@@ -62,7 +62,7 @@ def get_config():
         config = custom_config.load_config('os-template.yml')
     except Exception as e:
         print(f"Warning: Failed to parse os-template.yml using config.py: {e}")
-        config = {}
+        config = {'policy': {'max_diff_warning': 1200}}
         
     return config
 def is_huge_diff(config, diff_text):

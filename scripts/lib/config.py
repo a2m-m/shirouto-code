@@ -2,6 +2,7 @@
 import sys
 import os
 import re
+import json
 
 def load_config(filepath):
     """
@@ -126,16 +127,15 @@ if __name__ == "__main__":
     elif isinstance(val, bool):
         print("true" if val else "false")
     elif isinstance(val, list):
-         # Print as a JSON-like array string which is often parsed safely or eval'd by bash
-         # Alternatively, just space separated. Let's stick to bash friendly or eval friendly.
-         # Actually os-template.yml host_setup_steps is used in bash. If we print the raw array, it might be hard to parse.
-         # For simplicity in Bash scripts, we can join them with newlines or spaces. 
-         # But in scripts/run, host_setup_steps is only checked for not empty.
-         # Let's just output a string representation that bash can check if it's "[]" or not.
-         if not val:
-             print("[]")
-         else:
-             import json
-             print(json.dumps(val))
+        # Print as a JSON-like array string which is often parsed safely or eval'd by bash
+        # Alternatively, just space separated. Let's stick to bash friendly or eval friendly.
+        # Actually os-template.yml host_setup_steps is used in bash. If we print the raw array, it might be hard to parse.
+        # For simplicity in Bash scripts, we can join them with newlines or spaces. 
+        # But in scripts/run, host_setup_steps is only checked for not empty.
+        # Let's just output a string representation that bash can check if it's "[]" or not.
+        if not val:
+            print("[]")
+        else:
+            print(json.dumps(val))
     else:
         print(str(val))

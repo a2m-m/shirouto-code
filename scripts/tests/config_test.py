@@ -67,5 +67,15 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.get_value(self.path, 'nonexistent.key'), None)
         self.assertEqual(config.get_value(self.path, 'project.nonexistent'), None)
 
+    def test_real_os_template(self):
+        # Smoke test actual os-template.yml
+        real_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'os-template.yml'))
+        if os.path.exists(real_path):
+            cfg = config.load_config(real_path)
+            self.assertEqual(cfg['project']['name'], 'YOUR_PROJECT_NAME')
+            self.assertEqual(cfg['runtime']['mode'], 'docker')
+            self.assertEqual(cfg['commands']['lint'], "echo 'skip'")
+            self.assertEqual(cfg['policy']['max_diff_warning'], 1200)
+
 if __name__ == '__main__':
     unittest.main()
