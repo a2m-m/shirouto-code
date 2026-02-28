@@ -30,8 +30,6 @@
 ## やってはいけないこと
 
 - Antigravity（Executor）の領域に踏み込んで大規模な実装を進めること
-- Issueに書かれていないスコープの作業
-- `.ai-instructions.md` の共通ルールに違反する行為
 
 ---
 
