@@ -14,7 +14,7 @@ project:
   
 runtime:
   mode: docker
-  docker_image: "python:3.12-alpine"
+  docker_image: "alpine"
   host_setup_steps: ["step1", 'step2', step3]
 
 commands:
@@ -75,6 +75,7 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(cfg['project']['name'], 'YOUR_PROJECT_NAME')
             self.assertEqual(cfg['runtime']['mode'], 'docker')
             self.assertEqual(cfg['runtime']['docker_image'], 'alpine')
+            self.assertEqual(cfg['runtime']['host_setup_steps'], [])
             self.assertEqual(cfg['commands']['lint'], "echo 'skip'")
             self.assertEqual(cfg['policy']['max_diff_warning'], 1200)
 
