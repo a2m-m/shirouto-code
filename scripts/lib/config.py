@@ -3,7 +3,13 @@ import sys
 import os
 import json
 
-import yaml
+try:
+    import yaml
+except ImportError:
+    # Gracefully handle missing pyyaml to prevent silent failures in bash scripts like run
+    print("Warning: pyyaml is not installed. Run 'pip install pyyaml' or check requirements.txt.", file=sys.stderr)
+    print("") # Ensure empty string is outputted to bash, as expected by caller
+    sys.exit(0) # Exit 0 so bash evaluation doesn't fail but just receives empty string
 
 def load_config(filepath):
     """
@@ -51,7 +57,7 @@ if __name__ == "__main__":
     val = get_value(filepath, key_path)
     
     if val is None:
-        print("", end="")
+        print("")
     elif isinstance(val, bool):
         print("true" if val else "false")
     elif isinstance(val, list):

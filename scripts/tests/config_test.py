@@ -78,6 +78,8 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(cfg['runtime']['host_setup_steps'], [])
             self.assertEqual(cfg['commands']['lint'], "echo 'skip'")
             self.assertEqual(cfg['policy']['max_diff_warning'], 1200)
+        else:
+            self.skipTest("os-template.yml not found, skipping real file test")
 
 if __name__ == '__main__':
     unittest.main()
