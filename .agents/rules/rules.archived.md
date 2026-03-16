@@ -2,6 +2,13 @@
 trigger: always_on
 glob:
 description: Antigravity (Gemini) 固有ルール — 役割・責務・行動規範を定義する
+archived: true
+archived_reason: "2026-03-16 シングルエージェント移行により Antigravity を廃止。Claude Code が Executor + QA/Architect を兼務するため本ファイルは不要。参照のみ目的で保存。"
+---
+
+> **[ARCHIVED]** このファイルは2026-03-16のシングルエージェント移行（Antigravity廃止）に伴いアーカイブされました。
+> 現行のルールは `.claude/CLAUDE.md` および `.ai-instructions.md` を参照してください。
+
 ---
 
 # Antigravity (Gemini) 固有ルール
