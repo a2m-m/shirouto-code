@@ -1,6 +1,6 @@
 # **01\_OS Overview**
 
-AI（Claude Code / Antigravity）× GitHub を前提に、速度と安全性を両立しながら、学習も自然に生まれる開発エコシステムを作る。
+AI（Claude Code）× GitHub を前提に、速度と安全性を両立しながら、学習も自然に生まれる開発エコシステムを作る。
 
 ---
 
