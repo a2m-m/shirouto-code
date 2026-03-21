@@ -235,6 +235,61 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             line-height: 1.4;
             margin-top: 2px;
         }
+        #translation-section {
+            margin-top: 8px;
+        }
+        #translation-toggle {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 4px;
+        }
+        #translation-toggle button {
+            flex: 1;
+            padding: 2px 4px;
+            font-size: 10px;
+            background: var(--vscode-button-secondaryBackground, transparent);
+            color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        #translation-toggle button.active {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border-color: var(--vscode-button-background);
+        }
+        /* 表示モード制御 */
+        #translation-log[data-view="translated"] .translation-original { display: none; }
+        #translation-log[data-view="original"] .translation-text { display: none; }
+        /* 狭幅コンパクトモード: 翻訳文のみ・原文を極小表示 */
+        body.compact #translation-toggle { display: none; }
+        body.compact .translation-original { display: none; }
+        body.compact .translation-pair { padding: 2px 4px; }
+        body.compact #translation-log { max-height: 200px; }
+        #translation-log {
+            font-size: 11px;
+            font-family: var(--vscode-editor-font-family, monospace);
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+        }
+        .translation-pair {
+            padding: 4px 8px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+        }
+        .translation-pair:last-child { border-bottom: none; }
+        .translation-original {
+            color: var(--vscode-descriptionForeground);
+            font-size: 10px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .translation-text {
+            color: var(--vscode-foreground);
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
     </style>
 </head>
 <body>
@@ -261,6 +316,14 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         <div id="result-body"></div>
     </div>
     <div id="output-log"></div>
+    <div id="translation-section">
+        <div id="translation-toggle">
+            <button data-view="both" class="active">並列</button>
+            <button data-view="translated">翻訳のみ</button>
+            <button data-view="original">原文のみ</button>
+        </div>
+        <div id="translation-log" data-view="both"></div>
+    </div>
     <script>
         const dot = document.getElementById('status-dot');
         const label = document.getElementById('session-name');
@@ -274,7 +337,30 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         const resultCard = document.getElementById('result-card');
         const resultBadge = document.getElementById('result-badge');
         const resultBody = document.getElementById('result-body');
+        const translationLog = document.getElementById('translation-log');
+        const translationToggle = document.getElementById('translation-toggle');
         const MAX_LINES = 200;
+        const MAX_TRANSLATION_ENTRIES = 100;
+
+        // 原文参照トグル
+        translationToggle.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-view]');
+            if (!btn) { return; }
+            const view = btn.dataset.view;
+            translationLog.dataset.view = view;
+            translationToggle.querySelectorAll('button').forEach(b => {
+                b.classList.toggle('active', b === btn);
+            });
+        });
+
+        // 狭幅レスポンシブ: パネル幅 200px 以下でコンパクトモード
+        const resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const narrow = entry.contentRect.width <= 200;
+                document.body.classList.toggle('compact', narrow);
+            }
+        });
+        resizeObserver.observe(document.body);
 
         function appendLines(lines) {
             lines.forEach(({ text, kind }) => {
@@ -339,6 +425,29 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             card.classList.add('visible');
         }
 
+        function appendTranslationPair(pair) {
+            const entry = document.createElement('div');
+            entry.className = 'translation-pair';
+
+            const orig = document.createElement('div');
+            orig.className = 'translation-original';
+            orig.textContent = pair.original;
+
+            const trans = document.createElement('div');
+            trans.className = 'translation-text';
+            trans.textContent = pair.translated;
+
+            entry.appendChild(orig);
+            entry.appendChild(trans);
+            translationLog.appendChild(entry);
+
+            // 最大エントリ数を超えたら古いものを削除
+            while (translationLog.children.length > MAX_TRANSLATION_ENTRIES) {
+                translationLog.removeChild(translationLog.firstChild);
+            }
+            translationLog.scrollTop = translationLog.scrollHeight;
+        }
+
         window.addEventListener('message', (event) => {
             const msg = event.data;
             if (msg.type === 'sessionUpdate') {
@@ -363,6 +472,8 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                 sep.className = 'separator';
                 log.appendChild(sep);
                 log.scrollTop = log.scrollHeight;
+            } else if (msg.type === 'translationPair') {
+                appendTranslationPair(msg.pair);
             }
         });
     </script>
