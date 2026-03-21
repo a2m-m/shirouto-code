@@ -1,0 +1,54 @@
+{
+  "name": "shirouto-code",
+  "displayName": "シロートコード",
+  "description": "ターミナル操作を翻訳・解説するサイドカー拡張",
+  "version": "0.0.1",
+  "publisher": "a2m-m",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "shirouto-code.openPanel",
+        "title": "シロートコード: パネルを開く"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "shirouto-code",
+          "title": "シロートコード",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "shirouto-code": [
+        {
+          "type": "webview",
+          "id": "shirouto-code.sidecarPanel",
+          "name": "シロートコード"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.24.0"
+  }
+}

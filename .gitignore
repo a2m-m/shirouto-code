@@ -13,3 +13,8 @@ os_docs/
 # 必須エントリ（project-setup により追加）
 *.log
 
+# VS Code 拡張機能ビルド成果物
+node_modules/
+out/
+*.vsix
+
