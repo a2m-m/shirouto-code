@@ -5,6 +5,7 @@ import { TranslationPseudoterminal } from './TranslationPseudoterminal';
 import { explain, type CustomDangerRule } from './CommandExplainer';
 import { summarize } from './ResultSummarizer';
 import { Translator } from './Translator';
+import { SecretMasker } from './SecretMasker';
 import type { ParsedLine } from './TerminalOutputParser';
 
 const TRANSLATION_SESSION_NAME = 'シロートコード翻訳セッション';
@@ -153,12 +154,20 @@ export function activate(context: vscode.ExtensionContext): void {
                 const summary = summarize(currentCommandLines, e.exitCode);
                 provider.showResultCard(summary);
 
-                // コマンド出力を翻訳して sidecar に渡す
-                const outputText = currentCommandLines.map(l => l.text).join('\n');
-                if (outputText.trim()) {
-                    translator.translateBatch(outputText).then(pair => {
-                        provider.showTranslation(pair);
-                    }).catch(() => { /* 翻訳失敗は無視 */ });
+                // コマンド出力を翻訳して sidecar に渡す（AI 送信前に秘密情報をマスキング）
+                const config = vscode.workspace.getConfiguration('shirouto-code');
+                const enableAiSend = config.get<boolean>('enableAiSend', true);
+                if (enableAiSend) {
+                    const outputText = currentCommandLines.map(l => l.text).join('\n');
+                    if (outputText.trim()) {
+                        const { masked, hasMasked } = SecretMasker.fromConfig().mask(outputText);
+                        if (hasMasked) {
+                            provider.showMaskNotice();
+                        }
+                        translator.translateBatch(masked).then(pair => {
+                            provider.showTranslation(pair);
+                        }).catch(() => { /* 翻訳失敗は無視 */ });
+                    }
                 }
 
                 currentCommandLines = [];
