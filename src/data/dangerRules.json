@@ -1,0 +1,57 @@
+{
+  "highDangerCommands": [
+    "rm", "rmdir", "dd", "mkfs", "fdisk", "parted", "shred", "wipefs"
+  ],
+  "mediumDangerCommands": [
+    "chmod", "chown", "sudo", "su", "kill", "killall", "pkill",
+    "reboot", "shutdown", "halt"
+  ],
+  "highDangerOptions": [
+    {
+      "pattern": "^-[a-zA-Z]*r[a-zA-Z]*f$|^--recursive.*--force$|^-rf$|^-fr$",
+      "message": "`-rf` オプション: フォルダごと強制削除します。元に戻せません！"
+    },
+    {
+      "pattern": "^--force$|^-f$",
+      "message": "`--force` / `-f` オプション: 確認なしで強制実行します。"
+    },
+    {
+      "pattern": "^-r$|^--recursive$",
+      "message": "`-r` / `--recursive` オプション: フォルダの中身を再帰的に処理します。"
+    },
+    {
+      "pattern": "^--hard-delete$|^--no-preserve-root$",
+      "message": "`--no-preserve-root` オプション: ルートディレクトリへの保護を無効化します。極めて危険です！"
+    }
+  ],
+  "mediumDangerOptions": [
+    {
+      "pattern": "^777$|^0777$",
+      "message": "`777` 権限: 全員に読み書き実行を許可します。セキュリティリスクがあります。"
+    },
+    {
+      "pattern": "^--overwrite$",
+      "message": "`--overwrite` オプション: 既存ファイルを上書きします。"
+    },
+    {
+      "pattern": "^--global$",
+      "message": "`--global` オプション: システム全体に設定が反映されます。"
+    },
+    {
+      "pattern": "^--privileged$",
+      "message": "`--privileged` オプション: コンテナに特権モードを付与します。セキュリティリスクがあります。"
+    }
+  ],
+  "contextualWarnings": [
+    {
+      "commands": ["rm"],
+      "optionPattern": "^(\\/|~\\/?$|\\*)",
+      "message": "⚠️ 削除対象がルートディレクトリやホームディレクトリ全体になっている可能性があります！"
+    },
+    {
+      "commands": ["chmod"],
+      "optionPattern": "^[0-7]{3,4}$",
+      "message": "ファイルの権限を数字で直接指定しています。`777` などは全員に書き込みを許可するため注意が必要です。"
+    }
+  ]
+}

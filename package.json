@@ -59,6 +59,30 @@
           "type": "string",
           "default": "",
           "description": "Gemini API キー（Google AI Studio から取得）"
+        },
+        "shirouto-code.customDangerCommands": {
+          "type": "array",
+          "default": [],
+          "description": "ユーザー定義の危険コマンドルール。組み込みルールに追加されます。",
+          "items": {
+            "type": "object",
+            "required": ["command", "level"],
+            "properties": {
+              "command": {
+                "type": "string",
+                "description": "危険と判定するコマンド名（例: kubectl）"
+              },
+              "level": {
+                "type": "string",
+                "enum": ["low", "medium", "high"],
+                "description": "危険度レベル"
+              },
+              "warning": {
+                "type": "string",
+                "description": "解説カードに表示する警告メッセージ（省略可）"
+              }
+            }
+          }
         }
       }
     }

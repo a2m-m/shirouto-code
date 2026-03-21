@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { SidecarPanel } from './SidecarPanel';
 import { TerminalOutputParser } from './TerminalOutputParser';
 import { TranslationPseudoterminal } from './TranslationPseudoterminal';
-import { explain } from './CommandExplainer';
+import { explain, type CustomDangerRule } from './CommandExplainer';
 import { summarize } from './ResultSummarizer';
 import type { ParsedLine } from './TerminalOutputParser';
 
@@ -124,7 +124,10 @@ export function activate(context: vscode.ExtensionContext): void {
                 // コマンド解説カードを sidecar に表示
                 const cmdLine = e.execution?.commandLine?.value;
                 if (typeof cmdLine === 'string' && cmdLine.trim()) {
-                    provider.showCommandCard(explain(cmdLine));
+                    const customRules = vscode.workspace
+                        .getConfiguration('shirouto-code')
+                        .get<CustomDangerRule[]>('customDangerCommands', []);
+                    provider.showCommandCard(explain(cmdLine, customRules));
                 }
             })
         );
