@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { ParsedLine } from './TerminalOutputParser';
+import type { CommandExplanation } from './CommandExplainer';
 
 export class SidecarPanel implements vscode.WebviewViewProvider {
     public static readonly viewType = 'shirouto-code.sidecarPanel';
@@ -35,6 +36,11 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     /** コマンド終了をパネルに通知する */
     public notifyCommandEnd(exitCode?: number): void {
         this._view?.webview.postMessage({ type: 'commandEnd', exitCode });
+    }
+
+    /** コマンド解説カードをパネルに表示する */
+    public showCommandCard(explanation: CommandExplanation): void {
+        this._view?.webview.postMessage({ type: 'commandCard', explanation });
     }
 
     private _getHtmlForWebview(): string {
@@ -99,6 +105,57 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             border-top: 1px dashed var(--vscode-panel-border);
             margin: 4px 0;
         }
+        #command-card {
+            display: none;
+            margin-top: 8px;
+            border-radius: 4px;
+            border: 1px solid var(--vscode-panel-border);
+            overflow: hidden;
+            font-size: 12px;
+        }
+        #command-card.visible { display: block; }
+        #card-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px;
+            background: var(--vscode-sideBarSectionHeader-background, var(--vscode-sideBar-background));
+        }
+        #card-command-name {
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-weight: bold;
+            font-size: 13px;
+            flex: 1;
+        }
+        #danger-badge {
+            font-size: 10px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+        #danger-badge.low    { background: var(--vscode-charts-green, #4c4); color: #000; }
+        #danger-badge.medium { background: var(--vscode-charts-yellow, #fa0); color: #000; }
+        #danger-badge.high   { background: var(--vscode-charts-red, #f44); color: #fff; }
+        #card-body { padding: 6px 8px; background: var(--vscode-sideBar-background); }
+        #card-description { color: var(--vscode-foreground); line-height: 1.5; margin-bottom: 4px; }
+        #card-args {
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 4px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .card-warning {
+            margin-top: 4px;
+            padding: 4px 6px;
+            border-radius: 3px;
+            background: color-mix(in srgb, var(--vscode-charts-red, #f44) 15%, transparent);
+            color: var(--vscode-errorForeground, #f88);
+            font-size: 11px;
+            line-height: 1.4;
+        }
     </style>
 </head>
 <body>
@@ -106,11 +163,28 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         <div id="status-dot"></div>
         <span id="session-name">ターミナル未接続</span>
     </div>
+    <div id="command-card">
+        <div id="card-header">
+            <span id="card-command-name"></span>
+            <span id="danger-badge"></span>
+        </div>
+        <div id="card-body">
+            <div id="card-description"></div>
+            <div id="card-args"></div>
+            <div id="card-warnings"></div>
+        </div>
+    </div>
     <div id="output-log"></div>
     <script>
         const dot = document.getElementById('status-dot');
         const label = document.getElementById('session-name');
         const log = document.getElementById('output-log');
+        const card = document.getElementById('command-card');
+        const cardName = document.getElementById('card-command-name');
+        const dangerBadge = document.getElementById('danger-badge');
+        const cardDesc = document.getElementById('card-description');
+        const cardArgs = document.getElementById('card-args');
+        const cardWarnings = document.getElementById('card-warnings');
         const MAX_LINES = 200;
 
         function appendLines(lines) {
@@ -127,6 +201,27 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             log.scrollTop = log.scrollHeight;
         }
 
+        function showCommandCard(explanation) {
+            const LEVEL_LABELS = { low: '危険度：低', medium: '危険度：中', high: '危険度：高' };
+            cardName.textContent = explanation.name || '（不明なコマンド）';
+            dangerBadge.textContent = LEVEL_LABELS[explanation.level] ?? explanation.level;
+            dangerBadge.className = explanation.level;
+            cardDesc.textContent = explanation.description;
+            if (explanation.args.length > 0) {
+                cardArgs.textContent = '引数: ' + explanation.args.join('  ');
+            } else {
+                cardArgs.textContent = '';
+            }
+            cardWarnings.innerHTML = '';
+            explanation.warnings.forEach(w => {
+                const div = document.createElement('div');
+                div.className = 'card-warning';
+                div.textContent = w;
+                cardWarnings.appendChild(div);
+            });
+            card.classList.add('visible');
+        }
+
         window.addEventListener('message', (event) => {
             const msg = event.data;
             if (msg.type === 'sessionUpdate') {
@@ -140,6 +235,8 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                     label.classList.remove('connected');
                     label.textContent = 'ターミナル未接続';
                 }
+            } else if (msg.type === 'commandCard') {
+                showCommandCard(msg.explanation);
             } else if (msg.type === 'outputAppend') {
                 appendLines(msg.lines);
             } else if (msg.type === 'commandEnd') {

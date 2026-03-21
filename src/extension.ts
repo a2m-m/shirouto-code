@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { SidecarPanel } from './SidecarPanel';
 import { TerminalOutputParser } from './TerminalOutputParser';
 import { TranslationPseudoterminal } from './TranslationPseudoterminal';
+import { explain } from './CommandExplainer';
 
 const TRANSLATION_SESSION_NAME = 'シロートコード翻訳セッション';
 const PTY_SESSION_NAME = 'シロートコード PTY セッション';
@@ -115,6 +116,11 @@ export function activate(context: vscode.ExtensionContext): void {
                     return;
                 }
                 parser.notifyCommandStart();
+                // コマンド解説カードを sidecar に表示
+                const cmdLine = e.execution?.commandLine?.value;
+                if (typeof cmdLine === 'string' && cmdLine.trim()) {
+                    provider.showCommandCard(explain(cmdLine));
+                }
             })
         );
     }
