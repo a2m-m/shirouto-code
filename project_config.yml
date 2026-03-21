@@ -41,7 +41,7 @@ commands:
   lint: "echo 'skip'"                 # TODO: 必須 — lint コマンドを設定する (例: "flake8" / "eslint ."）（スキップする場合は "echo 'skip'" と理由コメントを記載）
   typecheck: ""                       # optional: 型チェック (例: "mypy ." / "tsc --noEmit")。未使用なら空でOK
   test: "echo 'skip'"                 # TODO: 必須 — テストコマンドを設定する (例: "pytest" / "npm test")
-  build: ""                           # optional: ビルド (例: "docker build ." / "npm run build")
+  build: "npm run compile"            # 拡張機能 TypeScript コンパイル
   ci: ""                              # optional: 明示したい場合。空なら run が lint → typecheck → test を順に実行
 
 # ---------------------------------------------------------------------------
