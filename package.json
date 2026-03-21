@@ -39,6 +39,14 @@
           "name": "シロートコード"
         }
       ]
+    },
+    "terminal": {
+      "profiles": [
+        {
+          "title": "シロートコード翻訳セッション",
+          "id": "shirouto-code.translationSession"
+        }
+      ]
     }
   },
   "scripts": {

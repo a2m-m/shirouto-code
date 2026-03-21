@@ -2,9 +2,12 @@ import * as vscode from 'vscode';
 import { SidecarPanel } from './SidecarPanel';
 import { TerminalOutputParser } from './TerminalOutputParser';
 
+const TRANSLATION_SESSION_NAME = 'シロートコード翻訳セッション';
+
 export function activate(context: vscode.ExtensionContext): void {
     const provider = new SidecarPanel(context.extensionUri);
     const parser = new TerminalOutputParser();
+    let managedTerminal: vscode.Terminal | undefined;
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(SidecarPanel.viewType, provider)
@@ -16,17 +19,46 @@ export function activate(context: vscode.ExtensionContext): void {
         })
     );
 
-    // ターミナルセッション監視
+    // 翻訳セッション Terminal Profile の登録
     context.subscriptions.push(
-        vscode.window.onDidChangeActiveTerminal((terminal) => {
-            provider.updateSession(terminal?.name ?? null);
+        vscode.window.registerTerminalProfileProvider('shirouto-code.translationSession', {
+            provideTerminalProfile(
+                _token: vscode.CancellationToken
+            ): vscode.ProviderResult<vscode.TerminalProfile> {
+                return new vscode.TerminalProfile({ name: TRANSLATION_SESSION_NAME });
+            }
+        })
+    );
+
+    // 管理対象ターミナルの追跡（プロファイル選択時に起動したターミナルを 1対1 でバインド）
+    context.subscriptions.push(
+        vscode.window.onDidOpenTerminal((terminal) => {
+            if (terminal.name === TRANSLATION_SESSION_NAME) {
+                managedTerminal = terminal;
+                provider.updateSession(terminal.name);
+            }
         })
     );
 
     context.subscriptions.push(
-        vscode.window.onDidCloseTerminal(() => {
-            const active = vscode.window.activeTerminal;
-            provider.updateSession(active?.name ?? null);
+        vscode.window.onDidChangeActiveTerminal((terminal) => {
+            if (!managedTerminal) {
+                return;
+            }
+            if (terminal === managedTerminal) {
+                provider.updateSession(terminal.name);
+            } else {
+                provider.updateSession(null);
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.window.onDidCloseTerminal((terminal) => {
+            if (terminal === managedTerminal) {
+                managedTerminal = undefined;
+                provider.updateSession(null);
+            }
         })
     );
 
@@ -40,6 +72,9 @@ export function activate(context: vscode.ExtensionContext): void {
     if (typeof win.onDidWriteTerminalData === 'function') {
         context.subscriptions.push(
             win.onDidWriteTerminalData((event) => {
+                if (event.terminal !== managedTerminal) {
+                    return;
+                }
                 const lines = parser.push(event.data);
                 if (lines.length > 0) {
                     provider.appendOutput(lines);
@@ -51,7 +86,10 @@ export function activate(context: vscode.ExtensionContext): void {
     // コマンド境界検出（VS Code 1.90+: shell integration events）
     if (typeof vscode.window.onDidStartTerminalShellExecution === 'function') {
         context.subscriptions.push(
-            vscode.window.onDidStartTerminalShellExecution(() => {
+            vscode.window.onDidStartTerminalShellExecution((e) => {
+                if (e.terminal !== managedTerminal) {
+                    return;
+                }
                 parser.notifyCommandStart();
             })
         );
@@ -59,11 +97,13 @@ export function activate(context: vscode.ExtensionContext): void {
     if (typeof vscode.window.onDidEndTerminalShellExecution === 'function') {
         context.subscriptions.push(
             vscode.window.onDidEndTerminalShellExecution((e) => {
+                if (e.terminal !== managedTerminal) {
+                    return;
+                }
                 const boundary = parser.notifyCommandEnd(e.exitCode);
                 if (boundary.type === 'end') {
                     provider.notifyCommandEnd(boundary.exitCode);
                 }
-                // コマンド終了時にバッファをフラッシュ
                 const flushed = parser.flush();
                 if (flushed.length > 0) {
                     provider.appendOutput(flushed);
