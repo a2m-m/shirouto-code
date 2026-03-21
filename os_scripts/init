@@ -5,11 +5,79 @@ import sys
 import os
 import re
 import subprocess
+import textwrap
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-CONFIG_FILE = os.path.join(ROOT_DIR, 'os-template.yml')
+CONFIG_FILE = os.path.join(ROOT_DIR, 'project_config.yml')
 README_FILE = os.path.join(ROOT_DIR, 'README.md')
 AI_CONTEXT_FILE = os.path.join(ROOT_DIR, '.ai-context.md')
+
+INITIAL_AI_CONTEXT = textwrap.dedent("""\
+    # .ai-context.md
+
+    AIエージェントが作業開始時に現在の状態・進行中Issue・次の手を把握するためのコンテキストファイル。
+    **作業開始前に必ず読むこと。作業終了時に必ず更新すること。**
+
+    ---
+
+    ## 1. Status
+
+    <!-- TODO: 現在の状態を works / broken で記載し、補足があれば追記する -->
+
+    | 項目 | 状態 |
+    |---|---|
+    | 全体 | `works` |
+    | 補足 | `Initial instance setup` |
+
+    ---
+
+    ## 2. Active Issues
+
+    <!-- TODO: 現在進行中の Issue をリンク付きで記載する。完了済みは除外し、常に最新状態を保つ -->
+
+    | Issue | 要点 | 担当 |
+    |---|---|---|
+
+    ---
+
+    ## 3. Decisions
+
+    <!-- TODO: 仕様・方針の意思決定を記録する。「なぜそうしたか」を必ず残す -->
+
+    | 日付 | 決定事項 | 理由 | 関連Issue |
+    |---|---|---|---|
+
+    ---
+
+    ## 4. Next actions
+
+    <!-- TODO: 優先度順に次のアクションを記載する。エージェントはここを見て次の作業を判断する -->
+
+    1. `project_config.yml` の `commands.*` をプロジェクト用に更新する
+    2. `docs/vision.md` / `docs/architecture.md` を記入する
+
+    ---
+
+    ## 5. Known pitfalls
+
+    <!-- 過去の失敗・詰まりポイントを蓄積する。新たな罠を発見したらここに追記する -->
+
+    ---
+
+    ## 6. Commands
+
+    <!-- TODO: プロジェクトで使用するコマンドを記載する。project_config.yml の commands.* と対応させる -->
+    <!-- INSTRUCTOR NOTE: os_scripts/init 経由で初期化されました。使用する言語に合わせて以下のTODOコマンドを更新してください -->
+
+    ---
+
+    ## 7. CI Notes
+
+    <!-- TODO: CI が落ちた時の典型原因と対処法を記載する。繰り返し発生するものを優先直に記録する -->
+
+    | 典型原因 | 対処法 | 最終発生 |
+    |---|---|---|
+    """)
 
 def get_safe_yaml_string(val):
     if val is None:
@@ -19,7 +87,7 @@ def get_safe_yaml_string(val):
 
 def check_already_initialized(force):
     """
-    os-template.yml を読み込み、すでに YOUR_PROJECT_NAME が置換されているか確認する。
+    project_config.yml を読み込み、すでに YOUR_PROJECT_NAME が置換されているか確認する。
     """
     if not os.path.exists(CONFIG_FILE):
         return False
@@ -30,10 +98,10 @@ def check_already_initialized(force):
     # Check if the placeholder name still exists
     if not re.search(r'name:\s*"YOUR_PROJECT_NAME"', content):
         if force:
-            print("Warning: os-template.yml is already initialized. Overwriting because --force was provided.")
+            print("Warning: project_config.yml is already initialized. Overwriting because --force was provided.")
             return False
         else:
-            print("Error: os-template.yml is already initialized.")
+            print("Error: project_config.yml is already initialized.")
             print("To overwrite the existing configuration, run with the --force flag.")
             return True
     return False
@@ -70,7 +138,7 @@ def interactive_prompt(force):
     return project_name, owner, description, runtime_mode, docker_image, force
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Initialize the project instance (os-template.yml, README.md, .ai-context.md).")
+    parser = argparse.ArgumentParser(description="Initialize the project instance (project_config.yml, README.md, .ai-context.md).")
     parser.add_argument("--project-name", help="Name of the project")
     parser.add_argument("--owner", help="Team or Owner of the project")
     parser.add_argument("--description", help="Description of the project", default="")
@@ -102,9 +170,9 @@ def parse_args():
             print(f"  - {m}")
         print("\nNext step: Please provide the missing arguments as shown below or run without arguments for interactive mode:")
         if args.runtime_mode == "docker" or "--docker-image" in missing:
-            print("  ./scripts/init --project-name <name> --owner <owner> --runtime-mode docker --docker-image <image>")
+            print("  ./os_scripts/init --project-name <name> --owner <owner> --runtime-mode docker --docker-image <image>")
         else:
-            print("  ./scripts/init --project-name <name> --owner <owner> --runtime-mode docker|host")
+            print("  ./os_scripts/init --project-name <name> --owner <owner> --runtime-mode docker|host")
         sys.exit(1)
         
     return args.project_name, args.owner, args.description or "", args.runtime_mode, args.docker_image or "", args.force
@@ -165,31 +233,17 @@ def update_ai_context():
     if not os.path.exists(AI_CONTEXT_FILE):
         print(f"Warning: {AI_CONTEXT_FILE} not found.")
         return
-        
-    with open(AI_CONTEXT_FILE, 'r', encoding='utf-8') as f:
-        content = f.read()
-        
-    # Initialize Status section
-    content = content.replace('| 全体 | `TODO: works / broken` |', '| 全体 | `works` |')
-    content = content.replace('| 補足 | `TODO: 状態の補足（例：CI緑、テスト未整備、etc.）` |', '| 補足 | `Initial instance setup` |')
-    
-    # Explicitly initialize Commands section formatting to ensure AC4 is met precisely
-    if "## 6. Commands" in content:
-        content = content.replace(
-            "<!-- TODO: プロジェクトで使用するコマンドを記載する。os-template.yml の commands.* と対応させる -->",
-            "<!-- TODO: プロジェクトで使用するコマンドを記載する。os-template.yml の commands.* と対応させる -->\n<!-- INSTRUCTOR NOTE: scripts/init 経由で初期化されました。使用する言語に合わせて以下のTODOコマンドを更新してください -->"
-        )
-    
+
     with open(AI_CONTEXT_FILE, 'w', encoding='utf-8') as f:
-        f.write(content)
+        f.write(INITIAL_AI_CONTEXT)
         
     print(f"Initialized: {AI_CONTEXT_FILE}")
 
 def setup_git_hooks():
     try:
-        result = subprocess.run(["git", "config", "core.hooksPath", "scripts/hooks"], capture_output=True, text=True)
+        result = subprocess.run(["git", "config", "core.hooksPath", "os_scripts/hooks"], capture_output=True, text=True)
         if result.returncode == 0:
-            print("Git hooks configured: core.hooksPath set to scripts/hooks")
+            print("Git hooks configured: core.hooksPath set to os_scripts/hooks")
         else:
             print(f"Warning: Failed to set git core.hooksPath: {result.stderr.strip()}")
     except Exception as e:
@@ -203,12 +257,12 @@ def print_next_steps(runtime_mode):
     print("\n" + "-"*40)
     print("git checkout -b setup/init")
     print("git add -A")
-    print('git commit -m "chore: 初期セットアップ (scripts/init)"')
+    print('git commit -m "chore: 初期セットアップ (os_scripts/init)"')
     print("git push origin setup/init")
     print("-"*40 + "\n")
     if runtime_mode == 'host':
         print("Note: You selected 'host' runtime mode.")
-        print("Please make sure to add your setup scripts to 'host_setup_steps' in os-template.yml.")
+        print("Please make sure to add your setup scripts to 'host_setup_steps' in project_config.yml.")
 
 def main():
     project_name, owner, description, runtime_mode, docker_image, force = parse_args()

@@ -2,7 +2,7 @@ import unittest
 import os
 import sys
 
-# Add scripts/lib to path so config can be imported
+# Add os_scripts/lib to path so config can be imported
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'lib')))
 import config
 
@@ -68,18 +68,27 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.get_value(self.path, 'project.nonexistent'), None)
 
     def test_real_os_template(self):
-        # Smoke test actual os-template.yml
-        real_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'os-template.yml'))
+        # Smoke test actual project_config.yml
+        real_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'project_config.yml'))
         if os.path.exists(real_path):
             cfg = config.load_config(real_path)
             self.assertIsInstance(cfg['project']['name'], str)
-            self.assertEqual(cfg['runtime']['mode'], 'docker')
-            self.assertEqual(cfg['runtime']['docker_image'], 'alpine')
-            self.assertEqual(cfg['runtime']['host_setup_steps'], [])
-            self.assertEqual(cfg['commands']['lint'], "echo 'skip'")
-            self.assertEqual(cfg['policy']['max_diff_warning'], 1200)
+            self.assertTrue(cfg['project']['name'])
+            self.assertIsInstance(cfg['project']['owner'], str)
+            self.assertIn(cfg['runtime']['mode'], ['docker', 'host'])
+            self.assertIsInstance(cfg['runtime']['docker_image'], str)
+            self.assertIsInstance(cfg['runtime']['host_setup_steps'], list)
+            self.assertIsInstance(cfg['commands']['lint'], str)
+            self.assertIsInstance(cfg['commands']['test'], str)
+            self.assertIsInstance(cfg['features']['ci'], bool)
+            self.assertIsInstance(cfg['features']['guardrail'], bool)
+            self.assertIn(cfg['ai']['provider'], ['gemini', 'openai'])
+            self.assertIsInstance(cfg['ai']['model'], str)
+            self.assertIsInstance(cfg['security']['blocked_file_patterns'], list)
+            self.assertTrue(cfg['security']['blocked_file_patterns'])
+            self.assertIsInstance(cfg['policy']['max_diff_warning'], int)
         else:
-            self.skipTest("os-template.yml not found, skipping real file test")
+            self.skipTest("project_config.yml not found, skipping real file test")
 
 if __name__ == '__main__':
     unittest.main()
