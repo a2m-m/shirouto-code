@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { ParsedLine } from './TerminalOutputParser';
 import type { CommandExplanation } from './CommandExplainer';
 import type { ResultSummary } from './ResultSummarizer';
+import type { TranslationPair } from './Translator';
 
 export class SidecarPanel implements vscode.WebviewViewProvider {
     public static readonly viewType = 'shirouto-code.sidecarPanel';
@@ -47,6 +48,11 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     /** 実行後要約カードをパネルに表示する */
     public showResultCard(summary: ResultSummary): void {
         this._view?.webview.postMessage({ type: 'resultCard', summary });
+    }
+
+    /** 翻訳ペア（原文・翻訳文）をパネルに渡す */
+    public showTranslation(pair: TranslationPair): void {
+        this._view?.webview.postMessage({ type: 'translationPair', pair });
     }
 
     private _getHtmlForWebview(): string {

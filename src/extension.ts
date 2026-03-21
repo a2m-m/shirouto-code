@@ -4,6 +4,7 @@ import { TerminalOutputParser } from './TerminalOutputParser';
 import { TranslationPseudoterminal } from './TranslationPseudoterminal';
 import { explain, type CustomDangerRule } from './CommandExplainer';
 import { summarize } from './ResultSummarizer';
+import { Translator } from './Translator';
 import type { ParsedLine } from './TerminalOutputParser';
 
 const TRANSLATION_SESSION_NAME = 'シロートコード翻訳セッション';
@@ -12,6 +13,7 @@ const PTY_SESSION_NAME = 'シロートコード PTY セッション';
 export function activate(context: vscode.ExtensionContext): void {
     const provider = new SidecarPanel(context.extensionUri);
     const parser = new TerminalOutputParser();
+    const translator = new Translator();
     let managedTerminal: vscode.Terminal | undefined;
     let activePty: TranslationPseudoterminal | undefined;
     let currentCommandLines: ParsedLine[] = [];
@@ -150,6 +152,15 @@ export function activate(context: vscode.ExtensionContext): void {
                 // 実行後要約カードを表示
                 const summary = summarize(currentCommandLines, e.exitCode);
                 provider.showResultCard(summary);
+
+                // コマンド出力を翻訳して sidecar に渡す
+                const outputText = currentCommandLines.map(l => l.text).join('\n');
+                if (outputText.trim()) {
+                    translator.translateBatch(outputText).then(pair => {
+                        provider.showTranslation(pair);
+                    }).catch(() => { /* 翻訳失敗は無視 */ });
+                }
+
                 currentCommandLines = [];
             })
         );
