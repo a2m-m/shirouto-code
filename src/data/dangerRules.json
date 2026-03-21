@@ -45,7 +45,7 @@
   "contextualWarnings": [
     {
       "commands": ["rm"],
-      "optionPattern": "^(\\/$|~\\/?$|\\*)",
+      "optionPattern": "^(\\/|~\\/?$|\\*)",
       "message": "⚠️ 削除対象がルートディレクトリやホームディレクトリ全体になっている可能性があります！"
     },
     {
