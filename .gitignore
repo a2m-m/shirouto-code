@@ -4,11 +4,8 @@
 .claude/settings.local.json
 script_output.txt
 
-# OS Infrastructure（ローカル開発用、配布不要）
+# Claude Code ローカル設定（配布不要）
 .claude/
-os_scripts/
-os_docs/
-project_config.yml
 
 # 必須エントリ（project-setup により追加）
 *.log

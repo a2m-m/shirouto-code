@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+
+import argparse
+import sys
+import os
+import re
+import subprocess
+import textwrap
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+CONFIG_FILE = os.path.join(ROOT_DIR, 'project_config.yml')
+README_FILE = os.path.join(ROOT_DIR, 'README.md')
+AI_CONTEXT_FILE = os.path.join(ROOT_DIR, '.ai-context.md')
+
+INITIAL_AI_CONTEXT = textwrap.dedent("""\
+    # .ai-context.md
+
+    AIエージェントが作業開始時に現在の状態・進行中Issue・次の手を把握するためのコンテキストファイル。
+    **作業開始前に必ず読むこと。作業終了時に必ず更新すること。**
+
+    ---
+
+    ## 1. Status
+
+    <!-- TODO: 現在の状態を works / broken で記載し、補足があれば追記する -->
+
+    | 項目 | 状態 |
+    |---|---|
+    | 全体 | `works` |
+    | 補足 | `Initial instance setup` |
+
+    ---
+
+    ## 2. Active Issues
+
+    <!-- TODO: 現在進行中の Issue をリンク付きで記載する。完了済みは除外し、常に最新状態を保つ -->
+
+    | Issue | 要点 | 担当 |
+    |---|---|---|
+
+    ---
+
+    ## 3. Decisions
+
+    <!-- TODO: 仕様・方針の意思決定を記録する。「なぜそうしたか」を必ず残す -->
+
+    | 日付 | 決定事項 | 理由 | 関連Issue |
+    |---|---|---|---|
+
+    ---
+
+    ## 4. Next actions
+
+    <!-- TODO: 優先度順に次のアクションを記載する。エージェントはここを見て次の作業を判断する -->
+
+    1. `project_config.yml` の `commands.*` をプロジェクト用に更新する
+    2. `docs/vision.md` / `docs/architecture.md` を記入する
+
+    ---
+
+    ## 5. Known pitfalls
+
+    <!-- 過去の失敗・詰まりポイントを蓄積する。新たな罠を発見したらここに追記する -->
+
+    ---
+
+    ## 6. Commands
+
+    <!-- TODO: プロジェクトで使用するコマンドを記載する。project_config.yml の commands.* と対応させる -->
+    <!-- INSTRUCTOR NOTE: os_scripts/init 経由で初期化されました。使用する言語に合わせて以下のTODOコマンドを更新してください -->
+
+    ---
+
+    ## 7. CI Notes
+
+    <!-- TODO: CI が落ちた時の典型原因と対処法を記載する。繰り返し発生するものを優先直に記録する -->
+
+    | 典型原因 | 対処法 | 最終発生 |
+    |---|---|---|
+    """)
+
+def get_safe_yaml_string(val):
+    if val is None:
+        return ""
+    # Escape backslashes first, then quotes
+    return val.replace('\\', '\\\\').replace('"', '\\"')
+
+def check_already_initialized(force):
+    """
+    project_config.yml を読み込み、すでに YOUR_PROJECT_NAME が置換されているか確認する。
+    """
+    if not os.path.exists(CONFIG_FILE):
+        return False
+        
+    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+        content = f.read()
+        
+    # Check if the placeholder name still exists
+    if not re.search(r'name:\s*"YOUR_PROJECT_NAME"', content):
+        if force:
+            print("Warning: project_config.yml is already initialized. Overwriting because --force was provided.")
+            return False
+        else:
+            print("Error: project_config.yml is already initialized.")
+            print("To overwrite the existing configuration, run with the --force flag.")
+            return True
+    return False
+
+def interactive_prompt(force):
+    print("Welcome to Project Instance Initialization.")
+    print("Please provide the following details.")
+    
+    project_name = input("Project Name: ").strip()
+    while not project_name:
+        project_name = input("Project Name (required): ").strip()
+        
+    owner = input("Team or Owner: ").strip()
+    while not owner:
+        owner = input("Team or Owner (required): ").strip()
+        
+    description = input("Description: ").strip()
+    
+    while True:
+        runtime_mode = input("Runtime Mode (docker or host) [docker]: ").strip()
+        if not runtime_mode:
+            runtime_mode = "docker"
+        if runtime_mode in ["docker", "host"]:
+            break
+        print("Invalid mode. Please enter 'docker' or 'host'.")
+        
+    docker_image = ""
+    if runtime_mode == "docker":
+        while not docker_image:
+            docker_image = input("Docker Image (e.g., python:3.11): ").strip()
+            if not docker_image:
+                print("Docker image is required for docker mode.")
+    
+    return project_name, owner, description, runtime_mode, docker_image, force
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Initialize the project instance (project_config.yml, README.md, .ai-context.md).")
+    parser.add_argument("--project-name", help="Name of the project")
+    parser.add_argument("--owner", help="Team or Owner of the project")
+    parser.add_argument("--description", help="Description of the project", default="")
+    parser.add_argument("--runtime-mode", choices=["docker", "host"], help="Runtime mode (docker or host)")
+    parser.add_argument("--docker-image", help="Docker image (required if runtime-mode is docker)")
+    parser.add_argument("--force", action="store_true", help="Force initialization even if already initialized")
+    
+    args = parser.parse_args()
+    
+    # Check if any argument other than --force was provided. If not, use interactive mode.
+    provided_args = [arg for arg in sys.argv[1:] if arg != "--force"]
+    if len(provided_args) == 0:
+        return interactive_prompt(args.force)
+        
+    missing = []
+    if not args.project_name:
+        missing.append("--project-name")
+    if not args.owner:
+        missing.append("--owner")
+    if not args.runtime_mode:
+        missing.append("--runtime-mode")
+        
+    if args.runtime_mode == "docker" and not args.docker_image:
+        missing.append("--docker-image (required for docker mode)")
+        
+    if missing:
+        print("Error: Missing required arguments.")
+        for m in missing:
+            print(f"  - {m}")
+        print("\nNext step: Please provide the missing arguments as shown below or run without arguments for interactive mode:")
+        if args.runtime_mode == "docker" or "--docker-image" in missing:
+            print("  ./os_scripts/init --project-name <name> --owner <owner> --runtime-mode docker --docker-image <image>")
+        else:
+            print("  ./os_scripts/init --project-name <name> --owner <owner> --runtime-mode docker|host")
+        sys.exit(1)
+        
+    return args.project_name, args.owner, args.description or "", args.runtime_mode, args.docker_image or "", args.force
+
+def update_os_template(project_name, owner, description, runtime_mode, docker_image):
+    if not os.path.exists(CONFIG_FILE):
+        print(f"Error: {CONFIG_FILE} not found. Are you in the correct directory?")
+        sys.exit(1)
+        
+    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+        content = f.read()
+        
+    # Escape quotes and backslashes to prevent YAML injection
+    safe_name = get_safe_yaml_string(project_name)
+    safe_owner = get_safe_yaml_string(owner)
+    safe_desc = get_safe_yaml_string(description)
+    safe_image = get_safe_yaml_string(docker_image)
+        
+    # Use lambda to prevent re.sub from interpreting backslashes in the replacement string
+    content = re.sub(r'^(\s*)name:\s*".*"', lambda m: f'{m.group(1)}name: "{safe_name}"', content, count=1, flags=re.MULTILINE)
+    content = re.sub(r'^(\s*)owner:\s*".*"', lambda m: f'{m.group(1)}owner: "{safe_owner}"', content, count=1, flags=re.MULTILINE)
+    
+    # Description
+    content = re.sub(r'^(\s*)description:\s*".*"', lambda m: f'{m.group(1)}description: "{safe_desc}"', content, count=1, flags=re.MULTILINE)
+    
+    # Replace runtime info
+    content = re.sub(r'^(\s*)mode:\s*".*"', lambda m: f'{m.group(1)}mode: "{runtime_mode}"', content, count=1, flags=re.MULTILINE)
+    if runtime_mode == 'docker' and safe_image:
+        content = re.sub(r'^(\s*)docker_image:\s*".*"', lambda m: f'{m.group(1)}docker_image: "{safe_image}"', content, count=1, flags=re.MULTILINE)
+
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        f.write(content)
+        
+    print(f"Updated: {CONFIG_FILE}")
+
+def update_readme(project_name, owner):
+    if not os.path.exists(README_FILE):
+        print(f"Warning: {README_FILE} not found.")
+        return
+        
+    with open(README_FILE, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+        
+    # Strictly limit replacement to the specific header line
+    # to avoid changing Quickstart code examples.
+    # We look for the line starting with "> **" which acts as the title block.
+    for i, line in enumerate(lines):
+        if line.startswith("> **") and "—" in line:
+            lines[i] = f"> **{project_name}** — {owner}\n"
+            break
+            
+    with open(README_FILE, 'w', encoding='utf-8') as f:
+        f.writelines(lines)
+        
+    print(f"Updated: {README_FILE}")
+
+def update_ai_context():
+    if not os.path.exists(AI_CONTEXT_FILE):
+        print(f"Warning: {AI_CONTEXT_FILE} not found.")
+        return
+
+    with open(AI_CONTEXT_FILE, 'w', encoding='utf-8') as f:
+        f.write(INITIAL_AI_CONTEXT)
+        
+    print(f"Initialized: {AI_CONTEXT_FILE}")
+
+def setup_git_hooks():
+    try:
+        result = subprocess.run(["git", "config", "core.hooksPath", "os_scripts/hooks"], capture_output=True, text=True)
+        if result.returncode == 0:
+            print("Git hooks configured: core.hooksPath set to os_scripts/hooks")
+        else:
+            print(f"Warning: Failed to set git core.hooksPath: {result.stderr.strip()}")
+    except Exception as e:
+        print(f"Warning: Failed to set git core.hooksPath: {e}")
+
+def print_next_steps(runtime_mode):
+    print("\n" + "="*50)
+    print("Instance Initialization Successful!")
+    print("="*50)
+    print("\nNext steps (Copy and paste to create your first PR):")
+    print("\n" + "-"*40)
+    print("git checkout -b setup/init")
+    print("git add -A")
+    print('git commit -m "chore: 初期セットアップ (os_scripts/init)"')
+    print("git push origin setup/init")
+    print("-"*40 + "\n")
+    if runtime_mode == 'host':
+        print("Note: You selected 'host' runtime mode.")
+        print("Please make sure to add your setup scripts to 'host_setup_steps' in project_config.yml.")
+
+def main():
+    project_name, owner, description, runtime_mode, docker_image, force = parse_args()
+    
+    if check_already_initialized(force):
+        sys.exit(1)
+        
+    print(f"Initializing project '{project_name}'...")
+    
+    update_os_template(project_name, owner, description, runtime_mode, docker_image)
+    update_readme(project_name, owner)
+    update_ai_context()
+    
+    setup_git_hooks()
+    
+    print_next_steps(runtime_mode)
+
+if __name__ == "__main__":
+    main()
