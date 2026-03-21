@@ -97,6 +97,17 @@
             "type": "string",
             "description": "正規表現パターン（例: mytoken-[a-z0-9]+）"
           }
+        },
+        "shirouto-code.history.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "質問応答履歴をローカルファイルに保存する。オフにすると履歴の保存を停止します。"
+        },
+        "shirouto-code.history.retentionDays": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "description": "履歴の保持期間（日数）。この期間を超えた履歴は起動時に自動削除されます。"
         }
       }
     }
