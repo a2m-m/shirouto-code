@@ -13,6 +13,7 @@
   },
   "categories": ["Other"],
   "activationEvents": ["onStartupFinished"],
+  "enabledApiProposals": ["terminalDataWriteEvent"],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
