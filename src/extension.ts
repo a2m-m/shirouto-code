@@ -6,6 +6,7 @@ import { explain, type CustomDangerRule } from './CommandExplainer';
 import { summarize } from './ResultSummarizer';
 import { Translator } from './Translator';
 import { SecretMasker } from './SecretMasker';
+import { HistoryStore } from './HistoryStore';
 import type { ParsedLine } from './TerminalOutputParser';
 
 const TRANSLATION_SESSION_NAME = 'シロートコード翻訳セッション';
@@ -14,6 +15,9 @@ const PTY_SESSION_NAME = 'シロートコード PTY セッション';
 export function activate(context: vscode.ExtensionContext): void {
     const provider = new SidecarPanel(context.extensionUri);
     const parser = new TerminalOutputParser();
+    const historyStore = new HistoryStore(context.globalStorageUri);
+    historyStore.load();
+    historyStore.purgeExpired();
     const translator = new Translator();
     let managedTerminal: vscode.Terminal | undefined;
     let activePty: TranslationPseudoterminal | undefined;
