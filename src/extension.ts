@@ -1,13 +1,16 @@
 import * as vscode from 'vscode';
 import { SidecarPanel } from './SidecarPanel';
 import { TerminalOutputParser } from './TerminalOutputParser';
+import { TranslationPseudoterminal } from './TranslationPseudoterminal';
 
 const TRANSLATION_SESSION_NAME = 'シロートコード翻訳セッション';
+const PTY_SESSION_NAME = 'シロートコード PTY セッション';
 
 export function activate(context: vscode.ExtensionContext): void {
     const provider = new SidecarPanel(context.extensionUri);
     const parser = new TerminalOutputParser();
     let managedTerminal: vscode.Terminal | undefined;
+    let activePty: TranslationPseudoterminal | undefined;
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(SidecarPanel.viewType, provider)
@@ -16,6 +19,25 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
         vscode.commands.registerCommand('shirouto-code.openPanel', () => {
             vscode.commands.executeCommand('workbench.view.extension.shirouto-code');
+        })
+    );
+
+    // PTY 翻訳セッション起動コマンドの登録
+    context.subscriptions.push(
+        vscode.commands.registerCommand('shirouto-code.startPtySession', () => {
+            // 既存の PTY セッションがあれば再利用（1対1バインドを維持）
+            if (managedTerminal) {
+                managedTerminal.show();
+                return;
+            }
+            activePty = new TranslationPseudoterminal();
+            const terminal = vscode.window.createTerminal({
+                name: PTY_SESSION_NAME,
+                pty: activePty
+            });
+            managedTerminal = terminal;
+            provider.updateSession(PTY_SESSION_NAME);
+            terminal.show();
         })
     );
 
@@ -57,6 +79,8 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.onDidCloseTerminal((terminal) => {
             if (terminal === managedTerminal) {
                 managedTerminal = undefined;
+                activePty?.dispose();
+                activePty = undefined;
                 provider.updateSession(null);
             }
         })
