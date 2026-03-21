@@ -1,3 +1,5 @@
+import dangerRules from './data/dangerRules.json';
+
 /** 危険度レベル */
 export type DangerLevel = 'low' | 'medium' | 'high';
 
@@ -13,6 +15,16 @@ export interface CommandExplanation {
     description: string;
     /** 追加警告メッセージ（危険なオプションがある場合） */
     warnings: string[];
+}
+
+/** ユーザー定義の危険コマンドルール */
+export interface CustomDangerRule {
+    /** コマンド名 */
+    command: string;
+    /** 危険度 */
+    level: DangerLevel;
+    /** 警告メッセージ（省略可） */
+    warning?: string;
 }
 
 // --- コマンド別の基本説明 ---
@@ -78,43 +90,19 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
     code:    'Visual Studio Code でファイルやフォルダを開きます。',
 };
 
-// --- 危険度判定ルール ---
+// --- 危険度判定ルール（dangerRules.json から読み込み） ---
 
-/** 高危険コマンド */
-const HIGH_DANGER_COMMANDS = new Set(['rm', 'rmdir', 'dd', 'mkfs', 'fdisk', 'parted', 'shred', 'wipefs']);
+const HIGH_DANGER_COMMANDS = new Set(dangerRules.highDangerCommands);
+const MEDIUM_DANGER_COMMANDS = new Set(dangerRules.mediumDangerCommands);
 
-/** 中危険コマンド */
-const MEDIUM_DANGER_COMMANDS = new Set(['chmod', 'chown', 'sudo', 'su', 'kill', 'killall', 'pkill', 'reboot', 'shutdown', 'halt']);
+const HIGH_DANGER_OPTIONS: { pattern: RegExp; message: string }[] =
+    dangerRules.highDangerOptions.map(r => ({ pattern: new RegExp(r.pattern), message: r.message }));
 
-/** 高危険オプション */
-const HIGH_DANGER_OPTIONS: { pattern: RegExp; message: string }[] = [
-    { pattern: /^-[a-zA-Z]*r[a-zA-Z]*f$|^--recursive.*--force$|^-rf$|^-fr$/, message: '`-rf` オプション: フォルダごと強制削除します。元に戻せません！' },
-    { pattern: /^--force$|^-f$/, message: '`--force` / `-f` オプション: 確認なしで強制実行します。' },
-    { pattern: /^-r$|^--recursive$/, message: '`-r` / `--recursive` オプション: フォルダの中身を再帰的に処理します。' },
-    { pattern: /^--hard-delete$|^--no-preserve-root$/, message: '`--no-preserve-root` オプション: ルートディレクトリへの保護を無効化します。極めて危険です！' },
-];
+const MEDIUM_DANGER_OPTIONS: { pattern: RegExp; message: string }[] =
+    dangerRules.mediumDangerOptions.map(r => ({ pattern: new RegExp(r.pattern), message: r.message }));
 
-/** 中危険オプション */
-const MEDIUM_DANGER_OPTIONS: { pattern: RegExp; message: string }[] = [
-    { pattern: /^777$|^0777$/, message: '`777` 権限: 全員に読み書き実行を許可します。セキュリティリスクがあります。' },
-    { pattern: /^--overwrite$/, message: '`--overwrite` オプション: 既存ファイルを上書きします。' },
-    { pattern: /^--global$/, message: '`--global` オプション: システム全体に設定が反映されます。' },
-    { pattern: /^--privileged$/, message: '`--privileged` オプション: コンテナに特権モードを付与します。セキュリティリスクがあります。' },
-];
-
-/** ファイル削除・権限変更・強制実行に関する追加警告 */
-const CONTEXTUAL_WARNINGS: { commands: string[]; options: RegExp; message: string }[] = [
-    {
-        commands: ['rm'],
-        options: /^(\/|~\/?$|\*)/,
-        message: '⚠️ 削除対象がルートディレクトリやホームディレクトリ全体になっている可能性があります！',
-    },
-    {
-        commands: ['chmod'],
-        options: /^[0-7]{3,4}$/,
-        message: 'ファイルの権限を数字で直接指定しています。`777` などは全員に書き込みを許可するため注意が必要です。',
-    },
-];
+const CONTEXTUAL_WARNINGS: { commands: string[]; options: RegExp; message: string }[] =
+    dangerRules.contextualWarnings.map(r => ({ commands: r.commands, options: new RegExp(r.optionPattern), message: r.message }));
 
 /**
  * コマンドライン文字列をトークンに分割する（簡易シェル字句解析）。
@@ -149,8 +137,9 @@ function tokenize(commandLine: string): string[] {
 
 /**
  * コマンドライン文字列を解析してコマンド解説を返す。
+ * @param customRules VS Code 設定で追加されたユーザー定義の危険ルール
  */
-export function explain(commandLine: string): CommandExplanation {
+export function explain(commandLine: string, customRules: CustomDangerRule[] = []): CommandExplanation {
     const trimmed = commandLine.trim();
     const tokens = tokenize(trimmed);
 
@@ -207,6 +196,19 @@ export function explain(commandLine: string): CommandExplanation {
         for (const rule of CONTEXTUAL_WARNINGS) {
             if (rule.commands.includes(name) && rule.options.test(arg)) {
                 warnings.push(rule.message);
+            }
+        }
+    }
+
+    // ユーザー定義ルールを適用
+    for (const rule of customRules) {
+        if (rule.command === name) {
+            const LEVEL_ORDER: Record<DangerLevel, number> = { low: 0, medium: 1, high: 2 };
+            if (LEVEL_ORDER[rule.level] > LEVEL_ORDER[level]) {
+                level = rule.level;
+            }
+            if (rule.warning) {
+                warnings.push(rule.warning);
             }
         }
     }
