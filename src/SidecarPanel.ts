@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { ParsedLine } from './TerminalOutputParser';
 
 export class SidecarPanel implements vscode.WebviewViewProvider {
     public static readonly viewType = 'shirouto-code.sidecarPanel';
@@ -24,6 +25,16 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     /** ターミナルセッション状態をパネルに反映する。name が null のときは切断状態 */
     public updateSession(name: string | null): void {
         this._view?.webview.postMessage({ type: 'sessionUpdate', name });
+    }
+
+    /** パース済み出力行をパネルに追記する */
+    public appendOutput(lines: ParsedLine[]): void {
+        this._view?.webview.postMessage({ type: 'outputAppend', lines });
+    }
+
+    /** コマンド終了をパネルに通知する */
+    public notifyCommandEnd(exitCode?: number): void {
+        this._view?.webview.postMessage({ type: 'commandEnd', exitCode });
     }
 
     private _getHtmlForWebview(): string {
@@ -70,6 +81,24 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             color: var(--vscode-foreground);
             font-weight: bold;
         }
+        #output-log {
+            margin-top: 8px;
+            font-size: 11px;
+            font-family: var(--vscode-editor-font-family, monospace);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .line { padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
+        .line.error   { color: var(--vscode-errorForeground, #f44); }
+        .line.confirm { color: var(--vscode-charts-yellow, #fa0); font-weight: bold; }
+        .line.ai-notice { color: var(--vscode-charts-blue, #4af); }
+        .line.command { color: var(--vscode-terminal-ansiGreen, #4f4); font-weight: bold; }
+        .line.log     { color: var(--vscode-foreground); }
+        .separator {
+            border: none;
+            border-top: 1px dashed var(--vscode-panel-border);
+            margin: 4px 0;
+        }
     </style>
 </head>
 <body>
@@ -77,20 +106,47 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         <div id="status-dot"></div>
         <span id="session-name">ターミナル未接続</span>
     </div>
+    <div id="output-log"></div>
     <script>
         const dot = document.getElementById('status-dot');
         const label = document.getElementById('session-name');
+        const log = document.getElementById('output-log');
+        const MAX_LINES = 200;
+
+        function appendLines(lines) {
+            lines.forEach(({ text, kind }) => {
+                const div = document.createElement('div');
+                div.className = 'line ' + kind;
+                div.textContent = text;
+                log.appendChild(div);
+            });
+            // 最大行数を超えたら古い行を削除
+            while (log.children.length > MAX_LINES) {
+                log.removeChild(log.firstChild);
+            }
+            log.scrollTop = log.scrollHeight;
+        }
+
         window.addEventListener('message', (event) => {
-            const { type, name } = event.data;
-            if (type !== 'sessionUpdate') { return; }
-            if (name) {
-                dot.classList.add('connected');
-                label.classList.add('connected');
-                label.textContent = name;
-            } else {
-                dot.classList.remove('connected');
-                label.classList.remove('connected');
-                label.textContent = 'ターミナル未接続';
+            const msg = event.data;
+            if (msg.type === 'sessionUpdate') {
+                const { name } = msg;
+                if (name) {
+                    dot.classList.add('connected');
+                    label.classList.add('connected');
+                    label.textContent = name;
+                } else {
+                    dot.classList.remove('connected');
+                    label.classList.remove('connected');
+                    label.textContent = 'ターミナル未接続';
+                }
+            } else if (msg.type === 'outputAppend') {
+                appendLines(msg.lines);
+            } else if (msg.type === 'commandEnd') {
+                const sep = document.createElement('hr');
+                sep.className = 'separator';
+                log.appendChild(sep);
+                log.scrollTop = log.scrollHeight;
             }
         });
     </script>
