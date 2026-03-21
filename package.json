@@ -24,6 +24,17 @@
       {
         "command": "shirouto-code.startPtySession",
         "title": "シロートコード: PTY 翻訳セッションを起動"
+      },
+      {
+        "command": "shirouto-code.focusQuestionInput",
+        "title": "シロートコード: 質問入力欄にフォーカス"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "shirouto-code.focusQuestionInput",
+        "key": "ctrl+shift+q",
+        "mac": "cmd+shift+q"
       }
     ],
     "viewsContainers": {

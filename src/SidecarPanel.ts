@@ -9,6 +9,9 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
 
     private _view?: vscode.WebviewView;
 
+    /** 質問を受け取ったときに呼ばれるコールバック（Issue #21 で Gemini に接続） */
+    public onQuestion?: (text: string) => void;
+
     constructor(private readonly _extensionUri: vscode.Uri) {}
 
     resolveWebviewView(
@@ -23,6 +26,12 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             localResourceRoots: [this._extensionUri]
         };
         webviewView.webview.html = this._getHtmlForWebview();
+
+        webviewView.webview.onDidReceiveMessage((msg: { type: string; text?: string }) => {
+            if (msg.type === 'question') {
+                this.onQuestion?.(msg.text ?? '');
+            }
+        });
     }
 
     /** ターミナルセッション状態をパネルに反映する。name が null のときは切断状態 */
@@ -58,6 +67,21 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     /** 秘密情報マスキング通知をパネルに表示する */
     public showMaskNotice(): void {
         this._view?.webview.postMessage({ type: 'maskNotice' });
+    }
+
+    /** AI の回答を会話欄に表示する */
+    public showAiAnswer(answer: string, contextSnippet?: string): void {
+        this._view?.webview.postMessage({ type: 'aiAnswer', answer, contextSnippet });
+    }
+
+    /** AI 思考中のローディング状態をパネルに反映する */
+    public setAiLoading(isLoading: boolean): void {
+        this._view?.webview.postMessage({ type: 'aiLoading', isLoading });
+    }
+
+    /** 質問入力欄にフォーカスを移動させる */
+    public focusQuestionInput(): void {
+        this._view?.webview.postMessage({ type: 'focusInput' });
     }
 
     private _getHtmlForWebview(): string {
@@ -320,6 +344,118 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             white-space: pre-wrap;
             word-break: break-all;
         }
+        /* Q&A セクション */
+        #qa-section {
+            margin-top: 12px;
+            border-top: 1px solid var(--vscode-panel-border);
+            padding-top: 8px;
+        }
+        #qa-chat {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .qa-msg {
+            padding: 6px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            line-height: 1.5;
+            max-width: 92%;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .qa-user {
+            align-self: flex-end;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+        }
+        .qa-ai {
+            align-self: flex-start;
+            background: var(--vscode-sideBar-background);
+            border: 1px solid var(--vscode-panel-border);
+            color: var(--vscode-foreground);
+        }
+        .qa-context {
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 4px;
+            font-style: italic;
+        }
+        #qa-loading {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+            padding: 2px 8px 6px;
+            display: none;
+            align-items: center;
+            gap: 3px;
+        }
+        #qa-loading.visible { display: flex; }
+        .ld {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: qa-blink 1.2s infinite;
+        }
+        .ld:nth-child(2) { animation-delay: 0.2s; }
+        .ld:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes qa-blink { 0%,80%,100% { opacity: 0.2; } 40% { opacity: 1; } }
+        #qa-presets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .qa-preset-btn {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: var(--vscode-button-secondaryBackground, transparent);
+            color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+            border: 1px solid var(--vscode-panel-border);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .qa-preset-btn:hover {
+            background: var(--vscode-button-secondaryHoverBackground, var(--vscode-panel-border));
+        }
+        #qa-input-row {
+            display: flex;
+            gap: 4px;
+        }
+        #qa-input {
+            flex: 1;
+            font-size: 12px;
+            padding: 4px 6px;
+            border-radius: 3px;
+            border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            outline: none;
+            font-family: var(--vscode-font-family);
+        }
+        #qa-input:focus {
+            border-color: var(--vscode-focusBorder);
+        }
+        #qa-send {
+            padding: 4px 8px;
+            font-size: 12px;
+            border-radius: 3px;
+            border: none;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            cursor: pointer;
+        }
+        #qa-send:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+        #qa-send:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -357,7 +493,24 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         </div>
         <div id="translation-log" data-view="both"></div>
     </div>
+    <div id="qa-section">
+        <div id="qa-chat" role="log" aria-live="polite"></div>
+        <div id="qa-loading">
+            <span class="ld"></span><span class="ld"></span><span class="ld"></span>
+            <span style="margin-left:4px">AI が考え中...</span>
+        </div>
+        <div id="qa-presets">
+            <button class="qa-preset-btn" data-preset="このコマンド何？">このコマンド何？</button>
+            <button class="qa-preset-btn" data-preset="エラー原因は？">エラー原因は？</button>
+            <button class="qa-preset-btn" data-preset="次にやることは？">次にやることは？</button>
+        </div>
+        <div id="qa-input-row">
+            <input type="text" id="qa-input" placeholder="質問を入力..." />
+            <button id="qa-send">送信</button>
+        </div>
+    </div>
     <script>
+        const vscodeApi = acquireVsCodeApi();
         const dot = document.getElementById('status-dot');
         const label = document.getElementById('session-name');
         const log = document.getElementById('output-log');
@@ -373,8 +526,14 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         const maskNotice = document.getElementById('mask-notice');
         const translationLog = document.getElementById('translation-log');
         const translationToggle = document.getElementById('translation-toggle');
+        const qaChat = document.getElementById('qa-chat');
+        const qaLoading = document.getElementById('qa-loading');
+        const qaInput = document.getElementById('qa-input');
+        const qaSend = document.getElementById('qa-send');
+        const qaPresets = document.getElementById('qa-presets');
         const MAX_LINES = 200;
         const MAX_TRANSLATION_ENTRIES = 100;
+        const MAX_QA_MESSAGES = 50;
 
         // カード折りたたみ
         function setupCollapse(cardEl) {
@@ -501,6 +660,47 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             translationLog.scrollTop = translationLog.scrollHeight;
         }
 
+        // Q&A: 質問送信
+        function submitQuestion(text) {
+            const trimmed = text.trim();
+            if (!trimmed) { return; }
+            addQaMessage('user', trimmed, null);
+            qaInput.value = '';
+            qaSend.disabled = true;
+            vscodeApi.postMessage({ type: 'question', text: trimmed });
+        }
+
+        // Q&A: メッセージをチャット欄に追加
+        function addQaMessage(role, text, contextSnippet) {
+            const div = document.createElement('div');
+            div.className = 'qa-msg qa-' + role;
+            if (contextSnippet) {
+                const ctx = document.createElement('div');
+                ctx.className = 'qa-context';
+                ctx.textContent = '参照: ' + contextSnippet;
+                div.appendChild(ctx);
+            }
+            div.appendChild(document.createTextNode(text));
+            qaChat.appendChild(div);
+            while (qaChat.children.length > MAX_QA_MESSAGES) {
+                qaChat.removeChild(qaChat.firstChild);
+            }
+            qaChat.scrollTop = qaChat.scrollHeight;
+        }
+
+        qaSend.addEventListener('click', () => submitQuestion(qaInput.value));
+        qaInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitQuestion(qaInput.value);
+            }
+        });
+        qaPresets.addEventListener('click', (e) => {
+            const btn = e.target.closest('.qa-preset-btn');
+            if (!btn) { return; }
+            submitQuestion(btn.dataset.preset);
+        });
+
         window.addEventListener('message', (event) => {
             const msg = event.data;
             if (msg.type === 'sessionUpdate') {
@@ -531,6 +731,15 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                 appendTranslationPair(msg.pair);
             } else if (msg.type === 'maskNotice') {
                 maskNotice.classList.add('visible');
+            } else if (msg.type === 'aiAnswer') {
+                qaLoading.classList.remove('visible');
+                qaSend.disabled = false;
+                addQaMessage('ai', msg.answer, msg.contextSnippet ?? null);
+            } else if (msg.type === 'aiLoading') {
+                qaLoading.classList.toggle('visible', msg.isLoading);
+                qaSend.disabled = msg.isLoading;
+            } else if (msg.type === 'focusInput') {
+                qaInput.focus();
             }
         });
     </script>
