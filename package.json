@@ -51,6 +51,16 @@
           "id": "shirouto-code.translationSession"
         }
       ]
+    },
+    "configuration": {
+      "title": "シロートコード",
+      "properties": {
+        "shirouto-code.geminiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Gemini API キー（Google AI Studio から取得）"
+        }
+      }
     }
   },
   "scripts": {
