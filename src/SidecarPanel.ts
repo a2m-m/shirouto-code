@@ -235,6 +235,33 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             line-height: 1.4;
             margin-top: 2px;
         }
+        #translation-section {
+            margin-top: 8px;
+        }
+        #translation-log {
+            font-size: 11px;
+            font-family: var(--vscode-editor-font-family, monospace);
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+        }
+        .translation-pair {
+            padding: 4px 8px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+        }
+        .translation-pair:last-child { border-bottom: none; }
+        .translation-original {
+            color: var(--vscode-descriptionForeground);
+            font-size: 10px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .translation-text {
+            color: var(--vscode-foreground);
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
     </style>
 </head>
 <body>
@@ -261,6 +288,9 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         <div id="result-body"></div>
     </div>
     <div id="output-log"></div>
+    <div id="translation-section">
+        <div id="translation-log"></div>
+    </div>
     <script>
         const dot = document.getElementById('status-dot');
         const label = document.getElementById('session-name');
@@ -274,7 +304,9 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         const resultCard = document.getElementById('result-card');
         const resultBadge = document.getElementById('result-badge');
         const resultBody = document.getElementById('result-body');
+        const translationLog = document.getElementById('translation-log');
         const MAX_LINES = 200;
+        const MAX_TRANSLATION_ENTRIES = 100;
 
         function appendLines(lines) {
             lines.forEach(({ text, kind }) => {
@@ -339,6 +371,29 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             card.classList.add('visible');
         }
 
+        function appendTranslationPair(pair) {
+            const entry = document.createElement('div');
+            entry.className = 'translation-pair';
+
+            const orig = document.createElement('div');
+            orig.className = 'translation-original';
+            orig.textContent = pair.original;
+
+            const trans = document.createElement('div');
+            trans.className = 'translation-text';
+            trans.textContent = pair.translated;
+
+            entry.appendChild(orig);
+            entry.appendChild(trans);
+            translationLog.appendChild(entry);
+
+            // 最大エントリ数を超えたら古いものを削除
+            while (translationLog.children.length > MAX_TRANSLATION_ENTRIES) {
+                translationLog.removeChild(translationLog.firstChild);
+            }
+            translationLog.scrollTop = translationLog.scrollHeight;
+        }
+
         window.addEventListener('message', (event) => {
             const msg = event.data;
             if (msg.type === 'sessionUpdate') {
@@ -363,6 +418,8 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                 sep.className = 'separator';
                 log.appendChild(sep);
                 log.scrollTop = log.scrollHeight;
+            } else if (msg.type === 'translationPair') {
+                appendTranslationPair(msg.pair);
             }
         });
     </script>
