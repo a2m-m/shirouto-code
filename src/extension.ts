@@ -7,6 +7,7 @@ import { summarize } from './ResultSummarizer';
 import { Translator } from './Translator';
 import { SecretMasker } from './SecretMasker';
 import { HistoryStore } from './HistoryStore';
+import { QuestionHandler, geminiErrorToMessage } from './QuestionHandler';
 import type { ParsedLine } from './TerminalOutputParser';
 
 const TRANSLATION_SESSION_NAME = 'シロートコード翻訳セッション';
@@ -19,9 +20,30 @@ export function activate(context: vscode.ExtensionContext): void {
     historyStore.load();
     historyStore.purgeExpired();
     const translator = new Translator();
+    const questionHandler = new QuestionHandler();
     let managedTerminal: vscode.Terminal | undefined;
     let activePty: TranslationPseudoterminal | undefined;
     let currentCommandLines: ParsedLine[] = [];
+
+    // Q&A: ユーザーの質問を Gemini に送信して回答を表示
+    provider.onQuestion = (text: string) => {
+        const snapshot = [...currentCommandLines];
+        provider.setAiLoading(true);
+        questionHandler.handle(text, snapshot).then(({ answer, contextSnippet }) => {
+            provider.showAiAnswer(answer, contextSnippet);
+            historyStore.save({
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                sessionId: managedTerminal?.name ?? 'unknown',
+                timestamp: Date.now(),
+                question: text,
+                answer
+            });
+        }).catch((err: unknown) => {
+            provider.showAiAnswer(geminiErrorToMessage(err));
+        }).finally(() => {
+            provider.setAiLoading(false);
+        });
+    };
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(SidecarPanel.viewType, provider)
