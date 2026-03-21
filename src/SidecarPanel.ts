@@ -430,6 +430,9 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             addSection('エラー原因の候補', summary.errorCauses, 'result-cause');
             addSection('次にやること', summary.nextActions, 'result-action');
 
+            resultCard.classList.remove('collapsed');
+            const resultIcon = resultCard.querySelector('.collapse-icon');
+            if (resultIcon) { resultIcon.textContent = '▼'; }
             resultCard.classList.add('visible');
         }
 
@@ -451,6 +454,9 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                 div.textContent = w;
                 cardWarnings.appendChild(div);
             });
+            card.classList.remove('collapsed');
+            const cardIcon = card.querySelector('.collapse-icon');
+            if (cardIcon) { cardIcon.textContent = '▼'; }
             card.classList.add('visible');
         }
 
