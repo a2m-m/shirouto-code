@@ -3,6 +3,8 @@ import { SidecarPanel } from './SidecarPanel';
 import { TerminalOutputParser } from './TerminalOutputParser';
 import { TranslationPseudoterminal } from './TranslationPseudoterminal';
 import { explain } from './CommandExplainer';
+import { summarize } from './ResultSummarizer';
+import type { ParsedLine } from './TerminalOutputParser';
 
 const TRANSLATION_SESSION_NAME = 'シロートコード翻訳セッション';
 const PTY_SESSION_NAME = 'シロートコード PTY セッション';
@@ -12,6 +14,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const parser = new TerminalOutputParser();
     let managedTerminal: vscode.Terminal | undefined;
     let activePty: TranslationPseudoterminal | undefined;
+    let currentCommandLines: ParsedLine[] = [];
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(SidecarPanel.viewType, provider)
@@ -102,6 +105,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 }
                 const lines = parser.push(event.data);
                 if (lines.length > 0) {
+                    currentCommandLines.push(...lines);
                     provider.appendOutput(lines);
                 }
             })
@@ -115,6 +119,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 if (e.terminal !== managedTerminal) {
                     return;
                 }
+                currentCommandLines = [];
                 parser.notifyCommandStart();
                 // コマンド解説カードを sidecar に表示
                 const cmdLine = e.execution?.commandLine?.value;
@@ -136,8 +141,13 @@ export function activate(context: vscode.ExtensionContext): void {
                 }
                 const flushed = parser.flush();
                 if (flushed.length > 0) {
+                    currentCommandLines.push(...flushed);
                     provider.appendOutput(flushed);
                 }
+                // 実行後要約カードを表示
+                const summary = summarize(currentCommandLines, e.exitCode);
+                provider.showResultCard(summary);
+                currentCommandLines = [];
             })
         );
     }
