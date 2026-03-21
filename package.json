@@ -20,6 +20,10 @@
       {
         "command": "shirouto-code.openPanel",
         "title": "シロートコード: パネルを開く"
+      },
+      {
+        "command": "shirouto-code.startPtySession",
+        "title": "シロートコード: PTY 翻訳セッションを起動"
       }
     ],
     "viewsContainers": {
