@@ -4,6 +4,10 @@
   "description": "ターミナル操作を翻訳・解説するサイドカー拡張",
   "version": "0.0.1",
   "publisher": "a2m-m",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/a2m-m/shirouto-code"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
