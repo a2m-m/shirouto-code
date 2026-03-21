@@ -33,6 +33,13 @@ export function activate(context: vscode.ExtensionContext): void {
         })
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('shirouto-code.focusQuestionInput', () => {
+            vscode.commands.executeCommand('workbench.view.extension.shirouto-code');
+            provider.focusQuestionInput();
+        })
+    );
+
     // PTY 翻訳セッション起動コマンドの登録
     context.subscriptions.push(
         vscode.commands.registerCommand('shirouto-code.startPtySession', () => {
