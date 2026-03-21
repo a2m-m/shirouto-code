@@ -238,6 +238,34 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         #translation-section {
             margin-top: 8px;
         }
+        #translation-toggle {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 4px;
+        }
+        #translation-toggle button {
+            flex: 1;
+            padding: 2px 4px;
+            font-size: 10px;
+            background: var(--vscode-button-secondaryBackground, transparent);
+            color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        #translation-toggle button.active {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border-color: var(--vscode-button-background);
+        }
+        /* 表示モード制御 */
+        #translation-log[data-view="translated"] .translation-original { display: none; }
+        #translation-log[data-view="original"] .translation-text { display: none; }
+        /* 狭幅コンパクトモード: 翻訳文のみ・原文を極小表示 */
+        body.compact #translation-toggle { display: none; }
+        body.compact .translation-original { display: none; }
+        body.compact .translation-pair { padding: 2px 4px; }
+        body.compact #translation-log { max-height: 200px; }
         #translation-log {
             font-size: 11px;
             font-family: var(--vscode-editor-font-family, monospace);
@@ -289,7 +317,12 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     </div>
     <div id="output-log"></div>
     <div id="translation-section">
-        <div id="translation-log"></div>
+        <div id="translation-toggle">
+            <button data-view="both" class="active">並列</button>
+            <button data-view="translated">翻訳のみ</button>
+            <button data-view="original">原文のみ</button>
+        </div>
+        <div id="translation-log" data-view="both"></div>
     </div>
     <script>
         const dot = document.getElementById('status-dot');
@@ -305,8 +338,29 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         const resultBadge = document.getElementById('result-badge');
         const resultBody = document.getElementById('result-body');
         const translationLog = document.getElementById('translation-log');
+        const translationToggle = document.getElementById('translation-toggle');
         const MAX_LINES = 200;
         const MAX_TRANSLATION_ENTRIES = 100;
+
+        // 原文参照トグル
+        translationToggle.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-view]');
+            if (!btn) { return; }
+            const view = btn.dataset.view;
+            translationLog.dataset.view = view;
+            translationToggle.querySelectorAll('button').forEach(b => {
+                b.classList.toggle('active', b === btn);
+            });
+        });
+
+        // 狭幅レスポンシブ: パネル幅 200px 以下でコンパクトモード
+        const resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const narrow = entry.contentRect.width <= 200;
+                document.body.classList.toggle('compact', narrow);
+            }
+        });
+        resizeObserver.observe(document.body);
 
         function appendLines(lines) {
             lines.forEach(({ text, kind }) => {
