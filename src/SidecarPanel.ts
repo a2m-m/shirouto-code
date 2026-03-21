@@ -132,6 +132,18 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             gap: 6px;
             padding: 6px 8px;
             background: var(--vscode-sideBarSectionHeader-background, var(--vscode-sideBar-background));
+            cursor: pointer;
+            user-select: none;
+        }
+        #card-header .collapse-icon,
+        #result-header .collapse-icon {
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+            flex-shrink: 0;
+        }
+        #command-card.collapsed #card-body,
+        #result-card.collapsed #result-body {
+            display: none;
         }
         #card-command-name {
             font-family: var(--vscode-editor-font-family, monospace);
@@ -183,6 +195,8 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             gap: 6px;
             padding: 6px 8px;
             background: var(--vscode-sideBarSectionHeader-background, var(--vscode-sideBar-background));
+            cursor: pointer;
+            user-select: none;
         }
         #result-title {
             font-weight: bold;
@@ -299,6 +313,7 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     </div>
     <div id="command-card">
         <div id="card-header">
+            <span class="collapse-icon">▼</span>
             <span id="card-command-name"></span>
             <span id="danger-badge"></span>
         </div>
@@ -310,6 +325,7 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     </div>
     <div id="result-card">
         <div id="result-header">
+            <span class="collapse-icon">▼</span>
             <span id="result-title">実行結果</span>
             <span id="result-badge"></span>
         </div>
@@ -341,6 +357,19 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         const translationToggle = document.getElementById('translation-toggle');
         const MAX_LINES = 200;
         const MAX_TRANSLATION_ENTRIES = 100;
+
+        // カード折りたたみ
+        function setupCollapse(cardEl) {
+            const header = cardEl.querySelector('[id$="-header"]');
+            if (!header) { return; }
+            const icon = header.querySelector('.collapse-icon');
+            header.addEventListener('click', () => {
+                const collapsed = cardEl.classList.toggle('collapsed');
+                if (icon) { icon.textContent = collapsed ? '▶' : '▼'; }
+            });
+        }
+        setupCollapse(card);
+        setupCollapse(resultCard);
 
         // 原文参照トグル
         translationToggle.addEventListener('click', (e) => {
@@ -405,7 +434,7 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         }
 
         function showCommandCard(explanation) {
-            const LEVEL_LABELS = { low: '危険度：低', medium: '危険度：中', high: '危険度：高' };
+            const LEVEL_LABELS = { low: '✅ 危険度：低', medium: '⚠️ 危険度：中', high: '🚨 危険度：高' };
             cardName.textContent = explanation.name || '（不明なコマンド）';
             dangerBadge.textContent = LEVEL_LABELS[explanation.level] ?? explanation.level;
             dangerBadge.className = explanation.level;
