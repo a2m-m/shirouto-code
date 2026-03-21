@@ -13,6 +13,20 @@ export function activate(context: vscode.ExtensionContext): void {
             vscode.commands.executeCommand('workbench.view.extension.shirouto-code');
         })
     );
+
+    // ターミナルセッション監視
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTerminal((terminal) => {
+            provider.updateSession(terminal?.name ?? null);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.window.onDidCloseTerminal(() => {
+            const active = vscode.window.activeTerminal;
+            provider.updateSession(active?.name ?? null);
+        })
+    );
 }
 
 export function deactivate(): void {
