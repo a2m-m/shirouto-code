@@ -7,6 +7,9 @@ script_output.txt
 # Claude Code ローカル設定（配布不要）
 .claude/
 
+# OS ドキュメント（内部資料、配布不要）
+os_docs/
+
 # 必須エントリ（project-setup により追加）
 *.log
 
