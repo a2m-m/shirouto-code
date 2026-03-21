@@ -55,6 +55,11 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         this._view?.webview.postMessage({ type: 'translationPair', pair });
     }
 
+    /** 秘密情報マスキング通知をパネルに表示する */
+    public showMaskNotice(): void {
+        this._view?.webview.postMessage({ type: 'maskNotice' });
+    }
+
     private _getHtmlForWebview(): string {
         return `<!DOCTYPE html>
 <html lang="ja">
@@ -249,6 +254,17 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             line-height: 1.4;
             margin-top: 2px;
         }
+        #mask-notice {
+            display: none;
+            margin-top: 8px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: color-mix(in srgb, var(--vscode-charts-yellow, #fa0) 15%, transparent);
+            color: var(--vscode-charts-yellow, #fa0);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        #mask-notice.visible { display: block; }
         #translation-section {
             margin-top: 8px;
         }
@@ -331,6 +347,7 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         </div>
         <div id="result-body"></div>
     </div>
+    <div id="mask-notice">⚠ 秘密情報を検知してマスキングしました。翻訳の原文に [MASKED] が含まれています。</div>
     <div id="output-log"></div>
     <div id="translation-section">
         <div id="translation-toggle">
@@ -353,6 +370,7 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         const resultCard = document.getElementById('result-card');
         const resultBadge = document.getElementById('result-badge');
         const resultBody = document.getElementById('result-body');
+        const maskNotice = document.getElementById('mask-notice');
         const translationLog = document.getElementById('translation-log');
         const translationToggle = document.getElementById('translation-toggle');
         const MAX_LINES = 200;
@@ -497,6 +515,8 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                     label.textContent = 'ターミナル未接続';
                 }
             } else if (msg.type === 'commandCard') {
+                // 新コマンド開始時にマスク通知をリセット
+                maskNotice.classList.remove('visible');
                 showCommandCard(msg.explanation);
             } else if (msg.type === 'resultCard') {
                 showResultCard(msg.summary);
@@ -509,6 +529,8 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                 log.scrollTop = log.scrollHeight;
             } else if (msg.type === 'translationPair') {
                 appendTranslationPair(msg.pair);
+            } else if (msg.type === 'maskNotice') {
+                maskNotice.classList.add('visible');
             }
         });
     </script>

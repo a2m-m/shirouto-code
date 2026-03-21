@@ -83,6 +83,20 @@
               }
             }
           }
+        },
+        "shirouto-code.enableAiSend": {
+          "type": "boolean",
+          "default": true,
+          "description": "ターミナル出力を Gemini AI に送信して翻訳する。オフにすると AI への送信を停止します。"
+        },
+        "shirouto-code.customSecretPatterns": {
+          "type": "array",
+          "default": [],
+          "description": "ユーザー定義の秘密情報検知パターン（正規表現）。マッチした文字列は AI 送信前に [MASKED] に置換されます。",
+          "items": {
+            "type": "string",
+            "description": "正規表現パターン（例: mytoken-[a-z0-9]+）"
+          }
         }
       }
     }
