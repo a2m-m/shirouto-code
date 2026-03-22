@@ -15,7 +15,7 @@ export interface ParsedLine {
 }
 
 /** コマンド境界イベント */
-export type BoundaryEvent = { type: 'start' } | { type: 'end'; exitCode?: number };
+export type BoundaryEvent = { type: 'start'; command?: string } | { type: 'end'; exitCode?: number };
 
 // ANSI エスケープシーケンス（色・カーソル移動・消去等）
 const ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[PX^_].*?\x9c|\x1b[^[\]]/g;
@@ -41,6 +41,28 @@ export function classifyLine(text: string): OutputKind {
     if (AI_NOTICE_RE.test(text)) { return 'ai-notice'; }
     if (ERROR_RE.test(text)) { return 'error'; }
     return 'log';
+}
+
+// PTY マーカーパターン（ZshHookInjector が埋め込む OSC シーケンス）
+const PTY_MARKER_START_RE = /\x1b\]6973;cmd_start\x07([^\x1b]*)/;
+const PTY_MARKER_END_RE = /\x1b\]6973;cmd_end;(\d*)\x07/;
+
+/**
+ * PTY マーカーを検知してコマンド境界イベントを返す。
+ * 検知した場合は BoundaryEvent、該当しない場合は null を返す。
+ * 呼び出しは stripAnsi より前に行うこと（OSC シーケンスが除去される前）。
+ */
+export function parseMarker(raw: string): BoundaryEvent | null {
+    const startMatch = PTY_MARKER_START_RE.exec(raw);
+    if (startMatch) {
+        return { type: 'start', command: startMatch[1] || undefined };
+    }
+    const endMatch = PTY_MARKER_END_RE.exec(raw);
+    if (endMatch) {
+        const code = endMatch[1] !== '' ? parseInt(endMatch[1], 10) : undefined;
+        return { type: 'end', exitCode: code };
+    }
+    return null;
 }
 
 /**
