@@ -25,6 +25,11 @@ export function activate(context: vscode.ExtensionContext): void {
     let activePty: TranslationPseudoterminal | undefined;
     let currentCommandLines: ParsedLine[] = [];
 
+    // VS Code フォークではイベント間でターミナルオブジェクト参照が変わることがあるため
+    // 参照比較に加えて名前でフォールバック比較する
+    const isManagedTerminal = (t: vscode.Terminal): boolean =>
+        t === managedTerminal || (managedTerminal !== undefined && t.name === managedTerminal.name);
+
     // Q&A: ユーザーの質問を Gemini に送信して回答を表示
     provider.onQuestion = (text: string) => {
         const snapshot = [...currentCommandLines];
@@ -104,10 +109,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTerminal((terminal) => {
-            if (!managedTerminal) {
+            if (!managedTerminal || !terminal) {
                 return;
             }
-            if (terminal === managedTerminal) {
+            if (isManagedTerminal(terminal)) {
                 provider.updateSession(terminal.name);
             } else {
                 provider.updateSession(null);
@@ -117,7 +122,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(
         vscode.window.onDidCloseTerminal((terminal) => {
-            if (terminal === managedTerminal) {
+            if (isManagedTerminal(terminal)) {
                 managedTerminal = undefined;
                 activePty?.dispose();
                 activePty = undefined;
@@ -136,7 +141,7 @@ export function activate(context: vscode.ExtensionContext): void {
     if (typeof win.onDidWriteTerminalData === 'function') {
         context.subscriptions.push(
             win.onDidWriteTerminalData((event) => {
-                if (event.terminal !== managedTerminal) {
+                if (!isManagedTerminal(event.terminal)) {
                     return;
                 }
                 const lines = parser.push(event.data);
@@ -152,7 +157,7 @@ export function activate(context: vscode.ExtensionContext): void {
     if (typeof vscode.window.onDidStartTerminalShellExecution === 'function') {
         context.subscriptions.push(
             vscode.window.onDidStartTerminalShellExecution((e) => {
-                if (e.terminal !== managedTerminal) {
+                if (!isManagedTerminal(e.terminal)) {
                     return;
                 }
                 currentCommandLines = [];
@@ -171,7 +176,7 @@ export function activate(context: vscode.ExtensionContext): void {
     if (typeof vscode.window.onDidEndTerminalShellExecution === 'function') {
         context.subscriptions.push(
             vscode.window.onDidEndTerminalShellExecution((e) => {
-                if (e.terminal !== managedTerminal) {
+                if (!isManagedTerminal(e.terminal)) {
                     return;
                 }
                 const boundary = parser.notifyCommandEnd(e.exitCode);
