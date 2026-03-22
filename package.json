@@ -141,9 +141,11 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "rebuild": "electron-rebuild -f -w node-pty",
-    "package": "vsce package"
+    "package": "vsce package",
+    "test": "jest"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
@@ -151,6 +153,8 @@
     "@vscode/vsce": "^2.24.0",
     "electron-rebuild": "^3.2.9",
     "eslint": "^8.0.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
     "typescript": "^5.0.0"
   },
   "dependencies": {
