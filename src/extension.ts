@@ -25,6 +25,7 @@ export function activate(context: vscode.ExtensionContext): void {
     let managedTerminal: vscode.Terminal | undefined;
     let activePty: TranslationPseudoterminal | undefined;
     let currentCommandLines: ParsedLine[] = [];
+    let lastCommandLines: ParsedLine[] = [];
 
     // VS Code フォークではイベント間でターミナルオブジェクト参照が変わることがあるため
     // 参照比較に加えて名前でフォールバック比較する
@@ -33,9 +34,30 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Q&A: ユーザーの質問を Gemini に送信して回答を表示
     provider.onQuestion = (text: string) => {
-        const snapshot = [...currentCommandLines];
+        const snapshot = currentCommandLines.length > 0
+            ? [...currentCommandLines]
+            : [...lastCommandLines];
+
+        const config = vscode.workspace.getConfiguration('shirouto-code');
+        const enableAiSend = config.get<boolean>('enableAiSend', true);
+        if (!enableAiSend) {
+            provider.showAiAnswer('⚠ AI 送信が無効です（設定: shirouto-code.enableAiSend を有効にしてください）');
+            return;
+        }
+
+        const masker = SecretMasker.fromConfig();
+        let hasMasked = false;
+        const maskedSnapshot = snapshot.map(l => {
+            const { masked, hasMasked: m } = masker.mask(l.text);
+            if (m) { hasMasked = true; }
+            return { ...l, text: masked };
+        });
+        if (hasMasked) {
+            provider.showMaskNotice();
+        }
+
         provider.setAiLoading(true);
-        questionHandler.handle(text, snapshot).then(({ answer, contextSnippet }) => {
+        questionHandler.handle(text, maskedSnapshot).then(({ answer, contextSnippet }) => {
             provider.showAiAnswer(answer, contextSnippet);
             historyStore.save({
                 id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -186,6 +208,7 @@ export function activate(context: vscode.ExtensionContext): void {
                                 }).catch(() => { /* 翻訳失敗は無視 */ });
                             }
                         }
+                        lastCommandLines = [...currentCommandLines];
                         currentCommandLines = [];
                     }
                 }
@@ -255,6 +278,7 @@ export function activate(context: vscode.ExtensionContext): void {
                     }
                 }
 
+                lastCommandLines = [...currentCommandLines];
                 currentCommandLines = [];
             })
         );
