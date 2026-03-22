@@ -28,6 +28,10 @@
         "title": "シロートコード: パネルを開く"
       },
       {
+        "command": "shirouto-code.startSession",
+        "title": "シロートコード: 翻訳セッションを開始"
+      },
+      {
         "command": "shirouto-code.startPtySession",
         "title": "シロートコード: PTY 翻訳セッションを起動"
       },

@@ -22,7 +22,8 @@ export function activate(context: vscode.ExtensionContext): void {
     historyStore.purgeExpired();
     const translator = new Translator();
     const questionHandler = new QuestionHandler();
-    let managedTerminal: vscode.Terminal | undefined;
+    let managedTerminalProfile: vscode.Terminal | undefined;
+    let managedPtyTerminal: vscode.Terminal | undefined;
     let activePty: TranslationPseudoterminal | undefined;
     let currentCommandLines: ParsedLine[] = [];
     let lastCommandLines: ParsedLine[] = [];
@@ -30,7 +31,9 @@ export function activate(context: vscode.ExtensionContext): void {
     // VS Code フォークではイベント間でターミナルオブジェクト参照が変わることがあるため
     // 参照比較に加えて名前でフォールバック比較する
     const isManagedTerminal = (t: vscode.Terminal): boolean =>
-        t === managedTerminal || (managedTerminal !== undefined && t.name === managedTerminal.name);
+        t === managedTerminalProfile ||
+        (managedTerminalProfile !== undefined && t.name === managedTerminalProfile.name) ||
+        t === managedPtyTerminal;
 
     // Q&A: ユーザーの質問を Gemini に送信して回答を表示
     provider.onQuestion = (text: string) => {
@@ -61,7 +64,7 @@ export function activate(context: vscode.ExtensionContext): void {
             provider.showAiAnswer(answer, contextSnippet);
             historyStore.save({
                 id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                sessionId: managedTerminal?.name ?? 'unknown',
+                sessionId: (managedTerminalProfile ?? managedPtyTerminal)?.name ?? 'unknown',
                 timestamp: Date.now(),
                 question: text,
                 answer
@@ -90,12 +93,27 @@ export function activate(context: vscode.ExtensionContext): void {
         })
     );
 
+    // 翻訳セッション起動コマンドの登録（コマンドパレット・sidecar ボタン共用）
+    context.subscriptions.push(
+        vscode.commands.registerCommand('shirouto-code.startSession', () => {
+            if (managedTerminalProfile) {
+                managedTerminalProfile.show();
+                return;
+            }
+            const terminal = vscode.window.createTerminal({ name: TRANSLATION_SESSION_NAME });
+            managedTerminalProfile = terminal;
+            terminal.show();
+        })
+    );
+
+    provider.onStartSession = () => vscode.commands.executeCommand('shirouto-code.startSession');
+
     // PTY 翻訳セッション起動コマンドの登録
     context.subscriptions.push(
         vscode.commands.registerCommand('shirouto-code.startPtySession', () => {
             // 既存の PTY セッションがあれば再利用（1対1バインドを維持）
-            if (managedTerminal) {
-                managedTerminal.show();
+            if (managedPtyTerminal) {
+                managedPtyTerminal.show();
                 return;
             }
             activePty = new TranslationPseudoterminal();
@@ -103,8 +121,8 @@ export function activate(context: vscode.ExtensionContext): void {
                 name: PTY_SESSION_NAME,
                 pty: activePty
             });
-            managedTerminal = terminal;
-            provider.updateSession(PTY_SESSION_NAME);
+            managedPtyTerminal = terminal;
+            provider.updateSession(PTY_SESSION_NAME, 'pty');
             terminal.show();
         })
     );
@@ -124,19 +142,25 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
         vscode.window.onDidOpenTerminal((terminal) => {
             if (terminal.name === TRANSLATION_SESSION_NAME) {
-                managedTerminal = terminal;
-                provider.updateSession(terminal.name);
+                managedTerminalProfile = terminal;
+                provider.updateSession(terminal.name, 'profile');
             }
         })
     );
 
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTerminal((terminal) => {
-            if (!managedTerminal || !terminal) {
+            if (!terminal) {
                 return;
             }
-            if (isManagedTerminal(terminal)) {
-                provider.updateSession(terminal.name);
+            if (!managedTerminalProfile && !managedPtyTerminal) {
+                return;
+            }
+            if (terminal === managedTerminalProfile ||
+                (managedTerminalProfile !== undefined && terminal.name === managedTerminalProfile.name)) {
+                provider.updateSession(terminal.name, 'profile');
+            } else if (terminal === managedPtyTerminal) {
+                provider.updateSession(terminal.name, 'pty');
             } else {
                 provider.updateSession(null);
             }
@@ -145,8 +169,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(
         vscode.window.onDidCloseTerminal((terminal) => {
-            if (isManagedTerminal(terminal)) {
-                managedTerminal = undefined;
+            if (terminal === managedTerminalProfile ||
+                (managedTerminalProfile !== undefined && terminal.name === managedTerminalProfile.name)) {
+                managedTerminalProfile = undefined;
+                provider.updateSession(null);
+            }
+            if (terminal === managedPtyTerminal) {
+                managedPtyTerminal = undefined;
                 activePty?.dispose();
                 activePty = undefined;
                 provider.updateSession(null);
