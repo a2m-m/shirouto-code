@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SidecarPanel } from './SidecarPanel';
+import { SidecarPanel, type CapabilityState } from './SidecarPanel';
 import { TerminalOutputParser } from './TerminalOutputParser';
 import { TranslationPseudoterminal } from './TranslationPseudoterminal';
 import { explain, type CustomDangerRule } from './CommandExplainer';
@@ -161,6 +161,38 @@ export function activate(context: vscode.ExtensionContext): void {
             listener: (e: { terminal: vscode.Terminal; data: string }) => void
         ) => vscode.Disposable;
     };
+
+    /** capability 状態を算出して sidecar に通知する */
+    function notifyCapability(): void {
+        const config = vscode.workspace.getConfiguration('shirouto-code');
+        const enableAiSend = config.get<boolean>('enableAiSend', true);
+        const geminiApiKey = config.get<string>('geminiApiKey', '');
+        let aiSend: CapabilityState['aiSend'];
+        if (!enableAiSend) {
+            aiSend = 'disabled';
+        } else if (!geminiApiKey || geminiApiKey.trim() === '') {
+            aiSend = 'no-key';
+        } else {
+            aiSend = 'available';
+        }
+        provider.updateCapability({
+            terminalData: typeof win.onDidWriteTerminalData === 'function' ? 'available' : 'unavailable',
+            shellIntegration: typeof vscode.window.onDidStartTerminalShellExecution === 'function' ? 'available' : 'unavailable',
+            aiSend,
+        });
+    }
+
+    notifyCapability();
+
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration((e) => {
+            if (e.affectsConfiguration('shirouto-code.enableAiSend') ||
+                e.affectsConfiguration('shirouto-code.geminiApiKey')) {
+                notifyCapability();
+            }
+        })
+    );
+
     if (typeof win.onDidWriteTerminalData === 'function') {
         context.subscriptions.push(
             win.onDidWriteTerminalData((event) => {

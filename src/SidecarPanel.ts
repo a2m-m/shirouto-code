@@ -4,10 +4,17 @@ import type { CommandExplanation } from './CommandExplainer';
 import type { ResultSummary } from './ResultSummarizer';
 import type { TranslationPair } from './Translator';
 
+export interface CapabilityState {
+    terminalData: 'available' | 'unavailable';
+    shellIntegration: 'available' | 'unavailable';
+    aiSend: 'available' | 'no-key' | 'disabled';
+}
+
 export class SidecarPanel implements vscode.WebviewViewProvider {
     public static readonly viewType = 'shirouto-code.sidecarPanel';
 
     private _view?: vscode.WebviewView;
+    private _pendingCapabilityState?: CapabilityState;
 
     /** 質問を受け取ったときに呼ばれるコールバック（Issue #21 で Gemini に接続） */
     public onQuestion?: (text: string) => void;
@@ -32,6 +39,10 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                 this.onQuestion?.(msg.text ?? '');
             }
         });
+
+        if (this._pendingCapabilityState) {
+            webviewView.webview.postMessage({ type: 'capabilityUpdate', state: this._pendingCapabilityState });
+        }
     }
 
     /** ターミナルセッション状態をパネルに反映する。name が null のときは切断状態 */
@@ -84,6 +95,12 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         this._view?.webview.postMessage({ type: 'focusInput' });
     }
 
+    /** 機能の利用可否状態をパネルに反映する */
+    public updateCapability(state: CapabilityState): void {
+        this._pendingCapabilityState = state;
+        this._view?.webview.postMessage({ type: 'capabilityUpdate', state });
+    }
+
     private _getHtmlForWebview(): string {
         return `<!DOCTYPE html>
 <html lang="ja">
@@ -107,6 +124,38 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             background: var(--vscode-sideBar-background);
             border: 1px solid var(--vscode-panel-border);
             font-size: 12px;
+        }
+        #capability-bar {
+            margin-top: 6px;
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--vscode-panel-border);
+            background: var(--vscode-sideBar-background);
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .cap-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .cap-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            background: var(--vscode-charts-yellow);
+        }
+        .cap-dot.ok   { background: var(--vscode-charts-green); }
+        .cap-dot.warn { background: var(--vscode-charts-yellow); }
+        .cap-dot.na   { background: var(--vscode-charts-red); }
+        .cap-label {
+            color: var(--vscode-descriptionForeground);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         #status-dot {
             width: 8px;
@@ -463,6 +512,16 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         <div id="status-dot"></div>
         <span id="session-name">ターミナル未接続</span>
     </div>
+    <div id="capability-bar">
+        <div class="cap-item">
+            <div class="cap-dot" id="cap-terminal-dot"></div>
+            <span class="cap-label" id="cap-terminal-label">ターミナルキャプチャ: 確認中...</span>
+        </div>
+        <div class="cap-item">
+            <div class="cap-dot" id="cap-ai-dot"></div>
+            <span class="cap-label" id="cap-ai-label">AI 機能: 確認中...</span>
+        </div>
+    </div>
     <div id="command-card">
         <div id="card-header">
             <span class="collapse-icon">▼</span>
@@ -511,6 +570,10 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     </div>
     <script>
         const vscodeApi = acquireVsCodeApi();
+        const capTerminalDot = document.getElementById('cap-terminal-dot');
+        const capTerminalLabel = document.getElementById('cap-terminal-label');
+        const capAiDot = document.getElementById('cap-ai-dot');
+        const capAiLabel = document.getElementById('cap-ai-label');
         const dot = document.getElementById('status-dot');
         const label = document.getElementById('session-name');
         const log = document.getElementById('output-log');
@@ -740,6 +803,29 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                 qaSend.disabled = msg.isLoading;
             } else if (msg.type === 'focusInput') {
                 qaInput.focus();
+            } else if (msg.type === 'capabilityUpdate') {
+                const { state } = msg;
+                // ターミナルキャプチャ状態
+                const terminalOk = state.terminalData === 'available' || state.shellIntegration === 'available';
+                if (terminalOk) {
+                    capTerminalDot.className = 'cap-dot ok';
+                    const method = state.terminalData === 'available' ? 'PTY モード' : 'Shell Integration';
+                    capTerminalLabel.textContent = 'ターミナルキャプチャ: 有効（' + method + '）';
+                } else {
+                    capTerminalDot.className = 'cap-dot warn';
+                    capTerminalLabel.textContent = 'ターミナルキャプチャ: 無効 — --enable-proposed-api a2m-m.shirouto-code で起動してください';
+                }
+                // AI 機能状態
+                if (state.aiSend === 'available') {
+                    capAiDot.className = 'cap-dot ok';
+                    capAiLabel.textContent = 'AI 機能: 有効';
+                } else if (state.aiSend === 'no-key') {
+                    capAiDot.className = 'cap-dot warn';
+                    capAiLabel.textContent = 'AI 機能: API キー未設定（設定: shirouto-code.geminiApiKey）';
+                } else {
+                    capAiDot.className = 'cap-dot na';
+                    capAiLabel.textContent = 'AI 機能: 無効（設定: shirouto-code.enableAiSend）';
+                }
             }
         });
     </script>
