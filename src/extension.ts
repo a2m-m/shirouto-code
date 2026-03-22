@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
-import { SidecarPanel, type CapabilityState } from './SidecarPanel';
-import { TerminalOutputParser } from './TerminalOutputParser';
+import * as fs from 'fs';
+import * as path from 'path';
+import { SidecarPanel } from './SidecarPanel';
 import { TranslationPseudoterminal } from './TranslationPseudoterminal';
 import { explain, type CustomDangerRule } from './CommandExplainer';
 import { summarize } from './ResultSummarizer';
@@ -10,36 +11,37 @@ import { HistoryStore } from './HistoryStore';
 import { QuestionHandler, geminiErrorToMessage } from './QuestionHandler';
 import { GeminiClient } from './GeminiClient';
 import type { ParsedLine } from './TerminalOutputParser';
-import { parseMarker } from './TerminalOutputParser';
 
-const TRANSLATION_SESSION_NAME = 'シロートコード翻訳セッション';
 const PTY_SESSION_NAME = 'シロートコード PTY セッション';
 
 export function activate(context: vscode.ExtensionContext): void {
-    const out = vscode.window.createOutputChannel('シロートコード');
-    out.appendLine('[activate] 拡張機能が起動しました');
-    context.subscriptions.push(out);
-    vscode.window.showInformationMessage('シロートコード: 起動しました ✓');
+    // VSIX (ZIP) はファイルパーミッションを保持しないため、
+    // node-pty の spawn-helper に実行権限を付与する（macOS のみ必要）
+    if (process.platform === 'darwin') {
+        try {
+            const spawnHelper = path.join(
+                context.extensionPath,
+                'node_modules', 'node-pty', 'prebuilds',
+                `${process.platform}-${process.arch}`,
+                'spawn-helper'
+            );
+            if (fs.existsSync(spawnHelper)) {
+                fs.chmodSync(spawnHelper, 0o755);
+            }
+        } catch (_) { /* 権限付与失敗は無視 */ }
+    }
 
     const provider = new SidecarPanel(context.extensionUri);
-    const parser = new TerminalOutputParser();
     const historyStore = new HistoryStore(context.globalStorageUri);
     historyStore.load();
     historyStore.purgeExpired();
     const translator = new Translator();
     const questionHandler = new QuestionHandler();
-    let managedTerminalProfile: vscode.Terminal | undefined;
     let managedPtyTerminal: vscode.Terminal | undefined;
     let activePty: TranslationPseudoterminal | undefined;
+    let ptySubscriptions: vscode.Disposable[] = [];
     let currentCommandLines: ParsedLine[] = [];
     let lastCommandLines: ParsedLine[] = [];
-
-    // VS Code フォークではイベント間でターミナルオブジェクト参照が変わることがあるため
-    // 参照比較に加えて名前でフォールバック比較する
-    const isManagedTerminal = (t: vscode.Terminal): boolean =>
-        t === managedTerminalProfile ||
-        (managedTerminalProfile !== undefined && t.name === managedTerminalProfile.name) ||
-        t === managedPtyTerminal;
 
     // Q&A: ユーザーの質問を Gemini に送信して回答を表示
     provider.onQuestion = (text: string) => {
@@ -70,7 +72,7 @@ export function activate(context: vscode.ExtensionContext): void {
             provider.showAiAnswer(answer, contextSnippet);
             historyStore.save({
                 id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                sessionId: (managedTerminalProfile ?? managedPtyTerminal)?.name ?? 'unknown',
+                sessionId: managedPtyTerminal?.name ?? 'unknown',
                 timestamp: Date.now(),
                 question: text,
                 answer
@@ -109,7 +111,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 );
                 return;
             }
-            const currentModel = config.get<string>('geminiModel', 'gemini-2.0-flash');
+            const currentModel = config.get<string>('geminiModel', 'gemini-2.0-flash-lite');
             await vscode.window.withProgress(
                 { location: vscode.ProgressLocation.Notification, title: 'モデル一覧を取得中...', cancellable: false },
                 async () => {
@@ -139,21 +141,6 @@ export function activate(context: vscode.ExtensionContext): void {
         })
     );
 
-    // 翻訳セッション起動コマンドの登録（コマンドパレット・sidecar ボタン共用）
-    context.subscriptions.push(
-        vscode.commands.registerCommand('shirouto-code.startSession', () => {
-            if (managedTerminalProfile) {
-                managedTerminalProfile.show();
-                return;
-            }
-            const terminal = vscode.window.createTerminal({ name: TRANSLATION_SESSION_NAME });
-            managedTerminalProfile = terminal;
-            terminal.show();
-        })
-    );
-
-    provider.onStartSession = () => vscode.commands.executeCommand('shirouto-code.startSession');
-
     // PTY 翻訳セッション起動コマンドの登録
     context.subscriptions.push(
         vscode.commands.registerCommand('shirouto-code.startPtySession', () => {
@@ -163,50 +150,63 @@ export function activate(context: vscode.ExtensionContext): void {
                 return;
             }
             activePty = new TranslationPseudoterminal();
+
+            // PTY 内部イベントを購読
+            ptySubscriptions = [
+                activePty.onCommandStart((command) => {
+                    currentCommandLines = [];
+                    if (command.trim()) {
+                        const customRules = vscode.workspace
+                            .getConfiguration('shirouto-code')
+                            .get<CustomDangerRule[]>('customDangerCommands', []);
+                        provider.showCommandCard(explain(command, customRules));
+                    }
+                }),
+                activePty.onParsedOutput((lines) => {
+                    currentCommandLines.push(...lines);
+                    provider.appendOutput(lines);
+                }),
+                activePty.onCommandEnd((exitCode) => {
+                    provider.notifyCommandEnd(exitCode);
+                    const summary = summarize(currentCommandLines, exitCode);
+                    provider.showResultCard(summary);
+
+                    const config = vscode.workspace.getConfiguration('shirouto-code');
+                    const enableAiSend = config.get<boolean>('enableAiSend', true);
+                    if (enableAiSend) {
+                        const outputText = currentCommandLines.map(l => l.text).join('\n');
+                        if (outputText.trim()) {
+                            const { masked, hasMasked } = SecretMasker.fromConfig().mask(outputText);
+                            if (hasMasked) { provider.showMaskNotice(); }
+                            translator.translateBatch(masked).then(pair => {
+                                provider.showTranslation(pair);
+                            }).catch(() => { /* 翻訳失敗は無視 */ });
+                        }
+                    }
+                    lastCommandLines = [...currentCommandLines];
+                    currentCommandLines = [];
+                }),
+            ];
+
             const terminal = vscode.window.createTerminal({
                 name: PTY_SESSION_NAME,
                 pty: activePty
             });
             managedPtyTerminal = terminal;
-            provider.updateSession(PTY_SESSION_NAME, 'pty');
+            provider.updateSession(PTY_SESSION_NAME);
             terminal.show();
         })
     );
 
-    // 翻訳セッション Terminal Profile の登録
-    context.subscriptions.push(
-        vscode.window.registerTerminalProfileProvider('shirouto-code.translationSession', {
-            provideTerminalProfile(
-                _token: vscode.CancellationToken
-            ): vscode.ProviderResult<vscode.TerminalProfile> {
-                return new vscode.TerminalProfile({ name: TRANSLATION_SESSION_NAME });
-            }
-        })
-    );
-
-    // 管理対象ターミナルの追跡（プロファイル選択時に起動したターミナルを 1対1 でバインド）
-    context.subscriptions.push(
-        vscode.window.onDidOpenTerminal((terminal) => {
-            if (terminal.name === TRANSLATION_SESSION_NAME) {
-                managedTerminalProfile = terminal;
-                provider.updateSession(terminal.name, 'profile');
-            }
-        })
-    );
+    provider.onStartSession = () => vscode.commands.executeCommand('shirouto-code.startPtySession');
 
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTerminal((terminal) => {
-            if (!terminal) {
+            if (!terminal || !managedPtyTerminal) {
                 return;
             }
-            if (!managedTerminalProfile && !managedPtyTerminal) {
-                return;
-            }
-            if (terminal === managedTerminalProfile ||
-                (managedTerminalProfile !== undefined && terminal.name === managedTerminalProfile.name)) {
-                provider.updateSession(terminal.name, 'profile');
-            } else if (terminal === managedPtyTerminal) {
-                provider.updateSession(terminal.name, 'pty');
+            if (terminal === managedPtyTerminal) {
+                provider.updateSession(terminal.name);
             } else {
                 provider.updateSession(null);
             }
@@ -215,34 +215,23 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(
         vscode.window.onDidCloseTerminal((terminal) => {
-            if (terminal === managedTerminalProfile ||
-                (managedTerminalProfile !== undefined && terminal.name === managedTerminalProfile.name)) {
-                managedTerminalProfile = undefined;
-                provider.updateSession(null);
-            }
             if (terminal === managedPtyTerminal) {
                 managedPtyTerminal = undefined;
                 activePty?.dispose();
                 activePty = undefined;
+                for (const sub of ptySubscriptions) { sub.dispose(); }
+                ptySubscriptions = [];
                 provider.updateSession(null);
             }
         })
     );
-
-    // ターミナル出力取得（proposed API: terminalDataWriteEvent）
-    // VS Code 起動時に --enable-proposed-api a2m-m.shirouto-code が必要
-    const win = vscode.window as unknown as {
-        onDidWriteTerminalData?: (
-            listener: (e: { terminal: vscode.Terminal; data: string }) => void
-        ) => vscode.Disposable;
-    };
 
     /** capability 状態を算出して sidecar に通知する */
     function notifyCapability(): void {
         const config = vscode.workspace.getConfiguration('shirouto-code');
         const enableAiSend = config.get<boolean>('enableAiSend', true);
         const geminiApiKey = config.get<string>('geminiApiKey', '');
-        let aiSend: CapabilityState['aiSend'];
+        let aiSend: 'available' | 'no-key' | 'disabled';
         if (!enableAiSend) {
             aiSend = 'disabled';
         } else if (!geminiApiKey || geminiApiKey.trim() === '') {
@@ -250,11 +239,7 @@ export function activate(context: vscode.ExtensionContext): void {
         } else {
             aiSend = 'available';
         }
-        provider.updateCapability({
-            terminalData: typeof win.onDidWriteTerminalData === 'function' ? 'available' : 'unavailable',
-            shellIntegration: typeof vscode.window.onDidStartTerminalShellExecution === 'function' ? 'available' : 'unavailable',
-            aiSend,
-        });
+        provider.updateCapability({ aiSend });
     }
 
     notifyCapability();
@@ -267,139 +252,6 @@ export function activate(context: vscode.ExtensionContext): void {
             }
         })
     );
-
-    if (typeof win.onDidWriteTerminalData === 'function') {
-        out.appendLine('[terminalData] API 利用可能');
-        context.subscriptions.push(
-            win.onDidWriteTerminalData((event) => {
-                const managed = isManagedTerminal(event.terminal);
-                out.appendLine(`[terminalData] fired terminal="${event.terminal.name}" managed=${managed}`);
-                if (managed) {
-                    vscode.window.showInformationMessage(`シロートコード: terminalData 受信 managed=${managed}`);
-                }
-                if (!managed) {
-                    return;
-                }
-
-                // PTY セッション時: ZshHookInjector が埋め込んだマーカーでコマンド境界を検知
-                // Shell Integration イベントが発火しない環境でも動作するためのフォールバック
-                if (activePty !== undefined) {
-                    const marker = parseMarker(event.data);
-                    if (marker?.type === 'start') {
-                        currentCommandLines = [];
-                        parser.notifyCommandStart();
-                        if (marker.command?.trim()) {
-                            const customRules = vscode.workspace
-                                .getConfiguration('shirouto-code')
-                                .get<CustomDangerRule[]>('customDangerCommands', []);
-                            provider.showCommandCard(explain(marker.command.trim(), customRules));
-                        }
-                    } else if (marker?.type === 'end') {
-                        const boundary = parser.notifyCommandEnd(marker.exitCode);
-                        if (boundary.type === 'end') {
-                            provider.notifyCommandEnd(boundary.exitCode);
-                        }
-                        const flushed = parser.flush();
-                        if (flushed.length > 0) {
-                            currentCommandLines.push(...flushed);
-                            provider.appendOutput(flushed);
-                        }
-                        const summary = summarize(currentCommandLines, marker.exitCode);
-                        provider.showResultCard(summary);
-
-                        const config = vscode.workspace.getConfiguration('shirouto-code');
-                        const enableAiSend = config.get<boolean>('enableAiSend', true);
-                        if (enableAiSend) {
-                            const outputText = currentCommandLines.map(l => l.text).join('\n');
-                            if (outputText.trim()) {
-                                const { masked, hasMasked } = SecretMasker.fromConfig().mask(outputText);
-                                if (hasMasked) {
-                                    provider.showMaskNotice();
-                                }
-                                translator.translateBatch(masked).then(pair => {
-                                    provider.showTranslation(pair);
-                                }).catch(() => { /* 翻訳失敗は無視 */ });
-                            }
-                        }
-                        lastCommandLines = [...currentCommandLines];
-                        currentCommandLines = [];
-                    }
-                }
-
-                // マーカーは ANSI_RE によって除去されるため、通常行の処理は常に実行する
-                const lines = parser.push(event.data);
-                if (lines.length > 0) {
-                    currentCommandLines.push(...lines);
-                    provider.appendOutput(lines);
-                }
-            })
-        );
-    }
-
-    // コマンド境界検出（VS Code 1.90+: shell integration events）
-    if (typeof vscode.window.onDidStartTerminalShellExecution === 'function') {
-        out.appendLine('[shellIntegration] API 利用可能');
-        context.subscriptions.push(
-            vscode.window.onDidStartTerminalShellExecution((e) => {
-                const managed = isManagedTerminal(e.terminal);
-                out.appendLine(`[shellIntegration] fired terminal="${e.terminal.name}" managed=${managed}`);
-                vscode.window.showInformationMessage(`シロートコード: shellExec 受信 managed=${managed}`);
-                if (!managed) {
-                    return;
-                }
-                currentCommandLines = [];
-                parser.notifyCommandStart();
-                // コマンド解説カードを sidecar に表示
-                const cmdLine = e.execution?.commandLine?.value;
-                if (typeof cmdLine === 'string' && cmdLine.trim()) {
-                    const customRules = vscode.workspace
-                        .getConfiguration('shirouto-code')
-                        .get<CustomDangerRule[]>('customDangerCommands', []);
-                    provider.showCommandCard(explain(cmdLine, customRules));
-                }
-            })
-        );
-    }
-    if (typeof vscode.window.onDidEndTerminalShellExecution === 'function') {
-        context.subscriptions.push(
-            vscode.window.onDidEndTerminalShellExecution((e) => {
-                if (!isManagedTerminal(e.terminal)) {
-                    return;
-                }
-                const boundary = parser.notifyCommandEnd(e.exitCode);
-                if (boundary.type === 'end') {
-                    provider.notifyCommandEnd(boundary.exitCode);
-                }
-                const flushed = parser.flush();
-                if (flushed.length > 0) {
-                    currentCommandLines.push(...flushed);
-                    provider.appendOutput(flushed);
-                }
-                // 実行後要約カードを表示
-                const summary = summarize(currentCommandLines, e.exitCode);
-                provider.showResultCard(summary);
-
-                // コマンド出力を翻訳して sidecar に渡す（AI 送信前に秘密情報をマスキング）
-                const config = vscode.workspace.getConfiguration('shirouto-code');
-                const enableAiSend = config.get<boolean>('enableAiSend', true);
-                if (enableAiSend) {
-                    const outputText = currentCommandLines.map(l => l.text).join('\n');
-                    if (outputText.trim()) {
-                        const { masked, hasMasked } = SecretMasker.fromConfig().mask(outputText);
-                        if (hasMasked) {
-                            provider.showMaskNotice();
-                        }
-                        translator.translateBatch(masked).then(pair => {
-                            provider.showTranslation(pair);
-                        }).catch(() => { /* 翻訳失敗は無視 */ });
-                    }
-                }
-
-                lastCommandLines = [...currentCommandLines];
-                currentCommandLines = [];
-            })
-        );
-    }
 }
 
 export function deactivate(): void {

@@ -5,8 +5,6 @@ import type { ResultSummary } from './ResultSummarizer';
 import type { TranslationPair } from './Translator';
 
 export interface CapabilityState {
-    terminalData: 'available' | 'unavailable';
-    shellIntegration: 'available' | 'unavailable';
     aiSend: 'available' | 'no-key' | 'disabled';
 }
 
@@ -51,8 +49,8 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     }
 
     /** ターミナルセッション状態をパネルに反映する。name が null のときは切断状態 */
-    public updateSession(name: string | null, sessionType?: 'profile' | 'pty'): void {
-        this._view?.webview.postMessage({ type: 'sessionUpdate', name, sessionType });
+    public updateSession(name: string | null): void {
+        this._view?.webview.postMessage({ type: 'sessionUpdate', name });
     }
 
     /** パース済み出力行をパネルに追記する */
@@ -844,16 +842,9 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                 qaInput.focus();
             } else if (msg.type === 'capabilityUpdate') {
                 const { state } = msg;
-                // ターミナルキャプチャ状態
-                const terminalOk = state.terminalData === 'available' || state.shellIntegration === 'available';
-                if (terminalOk) {
-                    capTerminalDot.className = 'cap-dot ok';
-                    const method = state.terminalData === 'available' ? 'PTY モード' : 'Shell Integration';
-                    capTerminalLabel.textContent = 'ターミナルキャプチャ: 有効（' + method + '）';
-                } else {
-                    capTerminalDot.className = 'cap-dot na';
-                    capTerminalLabel.textContent = 'ターミナルキャプチャ: 無効 — --enable-proposed-api a2m-m.shirouto-code で起動 / コマンド解説・Q&A は利用可能';
-                }
+                // ターミナルキャプチャは PTY モード固定
+                capTerminalDot.className = 'cap-dot ok';
+                capTerminalLabel.textContent = 'ターミナルキャプチャ: 有効（PTY モード）';
                 // AI 機能状態
                 if (state.aiSend === 'available') {
                     capAiDot.className = 'cap-dot ok';
