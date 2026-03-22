@@ -3,6 +3,14 @@ import * as vscode from 'vscode';
 const GEMINI_API_URL =
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
+/** API キー未設定エラーをこのセッションで既に通知済みかどうか */
+let apiKeyErrorShown = false;
+
+/** テスト用: API キー未設定通知フラグをリセットする */
+export function resetApiKeyErrorFlag(): void {
+    apiKeyErrorShown = false;
+}
+
 export class GeminiError extends Error {
     constructor(
         message: string,
@@ -18,11 +26,16 @@ export class GeminiClient {
         const config = vscode.workspace.getConfiguration('shirouto-code');
         const key = config.get<string>('geminiApiKey');
         if (!key || key.trim() === '') {
-            vscode.window.showErrorMessage(
-                'シロートコード: Gemini API キーが設定されていません。設定 → shirouto-code.geminiApiKey を確認してください。'
-            );
+            if (!apiKeyErrorShown) {
+                apiKeyErrorShown = true;
+                vscode.window.showErrorMessage(
+                    'シロートコード: Gemini API キーが設定されていません。設定 → shirouto-code.geminiApiKey を確認してください。'
+                );
+            }
             throw new GeminiError('Gemini API キーが未設定です');
         }
+        // キーが設定されたらフラグをリセット（設定変更後に再通知できるよう）
+        apiKeyErrorShown = false;
         return key.trim();
     }
 
