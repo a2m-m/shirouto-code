@@ -8,3 +8,7 @@ export const workspace = {
 export const window = {
     showErrorMessage: jest.fn()
 };
+
+export const Uri = {
+    file: (path: string) => ({ fsPath: path, toString: () => path })
+};

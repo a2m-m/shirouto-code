@@ -723,13 +723,23 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             translationLog.scrollTop = translationLog.scrollHeight;
         }
 
+        // Q&A: pending 状態の一元管理
+        let isPending = false;
+        function setQaPending(val) {
+            isPending = val;
+            qaSend.disabled = val;
+            qaInput.disabled = val;
+            qaPresets.querySelectorAll('.qa-preset-btn').forEach(btn => { btn.disabled = val; });
+            qaLoading.classList.toggle('visible', val);
+        }
+
         // Q&A: 質問送信
         function submitQuestion(text) {
             const trimmed = text.trim();
-            if (!trimmed) { return; }
+            if (isPending || !trimmed) { return; }
             addQaMessage('user', trimmed, null);
             qaInput.value = '';
-            qaSend.disabled = true;
+            setQaPending(true);
             vscodeApi.postMessage({ type: 'question', text: trimmed });
         }
 
@@ -795,12 +805,10 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
             } else if (msg.type === 'maskNotice') {
                 maskNotice.classList.add('visible');
             } else if (msg.type === 'aiAnswer') {
-                qaLoading.classList.remove('visible');
-                qaSend.disabled = false;
+                setQaPending(false);
                 addQaMessage('ai', msg.answer, msg.contextSnippet ?? null);
             } else if (msg.type === 'aiLoading') {
-                qaLoading.classList.toggle('visible', msg.isLoading);
-                qaSend.disabled = msg.isLoading;
+                setQaPending(msg.isLoading);
             } else if (msg.type === 'focusInput') {
                 qaInput.focus();
             } else if (msg.type === 'capabilityUpdate') {
