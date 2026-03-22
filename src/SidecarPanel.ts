@@ -851,8 +851,8 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                     const method = state.terminalData === 'available' ? 'PTY モード' : 'Shell Integration';
                     capTerminalLabel.textContent = 'ターミナルキャプチャ: 有効（' + method + '）';
                 } else {
-                    capTerminalDot.className = 'cap-dot warn';
-                    capTerminalLabel.textContent = 'ターミナルキャプチャ: 無効 — --enable-proposed-api a2m-m.shirouto-code で起動してください';
+                    capTerminalDot.className = 'cap-dot na';
+                    capTerminalLabel.textContent = 'ターミナルキャプチャ: 無効 — --enable-proposed-api a2m-m.shirouto-code で起動 / コマンド解説・Q&A は利用可能';
                 }
                 // AI 機能状態
                 if (state.aiSend === 'available') {
@@ -860,10 +860,10 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                     capAiLabel.textContent = 'AI 機能: 有効';
                 } else if (state.aiSend === 'no-key') {
                     capAiDot.className = 'cap-dot warn';
-                    capAiLabel.textContent = 'AI 機能: API キー未設定（設定: shirouto-code.geminiApiKey）';
+                    capAiLabel.textContent = 'AI 機能: API キー未設定（設定: shirouto-code.geminiApiKey）/ コマンド解説・原文表示は利用可能';
                 } else {
                     capAiDot.className = 'cap-dot na';
-                    capAiLabel.textContent = 'AI 機能: 無効（設定: shirouto-code.enableAiSend）';
+                    capAiLabel.textContent = 'AI 機能: 無効（設定: shirouto-code.enableAiSend）/ コマンド解説・原文表示は利用可能';
                 }
             }
         });
