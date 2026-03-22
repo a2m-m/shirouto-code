@@ -122,7 +122,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 pty: activePty
             });
             managedPtyTerminal = terminal;
-            provider.updateSession(PTY_SESSION_NAME);
+            provider.updateSession(PTY_SESSION_NAME, 'pty');
             terminal.show();
         })
     );
@@ -143,7 +143,7 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.onDidOpenTerminal((terminal) => {
             if (terminal.name === TRANSLATION_SESSION_NAME) {
                 managedTerminalProfile = terminal;
-                provider.updateSession(terminal.name);
+                provider.updateSession(terminal.name, 'profile');
             }
         })
     );
@@ -156,8 +156,11 @@ export function activate(context: vscode.ExtensionContext): void {
             if (!managedTerminalProfile && !managedPtyTerminal) {
                 return;
             }
-            if (isManagedTerminal(terminal)) {
-                provider.updateSession(terminal.name);
+            if (terminal === managedTerminalProfile ||
+                (managedTerminalProfile !== undefined && terminal.name === managedTerminalProfile.name)) {
+                provider.updateSession(terminal.name, 'profile');
+            } else if (terminal === managedPtyTerminal) {
+                provider.updateSession(terminal.name, 'pty');
             } else {
                 provider.updateSession(null);
             }

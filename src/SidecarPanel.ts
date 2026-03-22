@@ -51,8 +51,8 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     }
 
     /** ターミナルセッション状態をパネルに反映する。name が null のときは切断状態 */
-    public updateSession(name: string | null): void {
-        this._view?.webview.postMessage({ type: 'sessionUpdate', name });
+    public updateSession(name: string | null, sessionType?: 'profile' | 'pty'): void {
+        this._view?.webview.postMessage({ type: 'sessionUpdate', name, sessionType });
     }
 
     /** パース済み出力行をパネルに追記する */
@@ -805,11 +805,12 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         window.addEventListener('message', (event) => {
             const msg = event.data;
             if (msg.type === 'sessionUpdate') {
-                const { name } = msg;
+                const { name, sessionType } = msg;
                 if (name) {
                     dot.classList.add('connected');
                     label.classList.add('connected');
-                    label.textContent = name;
+                    const typeLabel = sessionType === 'pty' ? ' [PTY]' : sessionType === 'profile' ? ' [プロファイル]' : '';
+                    label.textContent = name + typeLabel;
                     sessionStartBtn.style.display = 'none';
                 } else {
                     dot.classList.remove('connected');
