@@ -46,16 +46,15 @@ VS Code の設定（`Cmd+,`）で以下を検索して入力：
 }
 ```
 
-### 3. Proposed API を有効化（必須）
+### 3. Proposed API を有効化（フル機能）
 
-本拡張はターミナル出力取得に VS Code の proposed API (`terminalDataWriteEvent`) を使用しています。
-以下のオプションを付けて VS Code を起動する必要があります。
+ターミナルキャプチャのフル機能を使うには proposed API を有効にして起動します：
 
 ```bash
 code --enable-proposed-api a2m-m.shirouto-code
 ```
 
-> **注意**: この制約は VS Code 本家の安定版リリースでは解除できません。Kiro や Antigravity などのフォークでは設定方法が異なる場合があります。
+> **注意**: このフラグなしでも「劣化モード」で動作します。詳しくは [capability バーの見方](#capability-バーの見方) を参照してください。
 
 ## 使い方
 
@@ -93,6 +92,36 @@ sidecar パネル下部の入力欄に自然文で入力、または：
 Cmd+Shift+Q（Mac）/ Ctrl+Shift+Q（Windows/Linux）
 ```
 
+## capability バーの見方
+
+sidecar パネル上部の **capability バー**（色付きドット）で現在の機能状態を確認できます。
+
+| ドット色 | 意味 |
+|---|---|
+| 緑 | 有効・正常 |
+| 黄 | 制限あり（劣化モード） |
+| 赤 | 無効 |
+
+### 劣化モードの挙動
+
+**ターミナルキャプチャが無効（赤）の場合：**
+
+- `--enable-proposed-api` なしで起動すると `onDidWriteTerminalData`（proposed API）が使えません
+- Shell Integration（VS Code 1.93+）が有効な環境ではこちらが代替として機能します
+- どちらも使えない場合でも **コマンド解説カード・AI Q&A・秘密情報マスキング** は引き続き利用できます
+- capability バーに有効化手順が表示されます
+
+**AI 機能が制限あり（黄）— API キー未設定の場合：**
+
+- 翻訳・Q&A 実行時にサイドパネル内にエラー表示（モーダル通知は初回のみ）
+- **コマンド解説カード・原文ログ表示・実行結果サマリー** は引き続き利用できます
+- API キーを設定すると即座に有効になります
+
+**AI 機能が無効（赤）— `enableAiSend: false` の場合：**
+
+- AI へのデータ送信を完全に停止します
+- ローカル機能（コマンド解説・原文表示・サマリー）のみ動作します
+
 ## 設定一覧
 
 | 設定キー | 型 | デフォルト | 説明 |
@@ -116,7 +145,7 @@ Cmd+Shift+Q（Mac）/ Ctrl+Shift+Q（Windows/Linux）
 
 ## 既知の制約
 
-- **proposed API 依存**: `--enable-proposed-api` フラグなしでは翻訳セッションが起動しません
+- **proposed API 依存**: `--enable-proposed-api` フラグなしではターミナルキャプチャが無効になります（劣化モードで動作可能）
 - **node-pty ビルド**: PTY セッションは C++ ネイティブモジュール（`node-pty`）を使用。Electron ABI との不一致が発生した場合は `npm run rebuild` を実行してください
 - **全画面 TUI 非対応**: `vim` や `htop` などの全画面 TUI アプリの出力は翻訳対象外です
 - **翻訳品質**: ローカル辞書でカバーされない出力は Gemini API にフォールバックします。API キー未設定時は英語のまま表示されます
