@@ -19,6 +19,9 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     /** 質問を受け取ったときに呼ばれるコールバック（Issue #21 で Gemini に接続） */
     public onQuestion?: (text: string) => void;
 
+    /** セッション開始ボタンが押されたときに呼ばれるコールバック */
+    public onStartSession?: () => void;
+
     constructor(private readonly _extensionUri: vscode.Uri) {}
 
     resolveWebviewView(
@@ -37,6 +40,8 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage((msg: { type: string; text?: string }) => {
             if (msg.type === 'question') {
                 this.onQuestion?.(msg.text ?? '');
+            } else if (msg.type === 'startSession') {
+                this.onStartSession?.();
             }
         });
 
@@ -176,6 +181,24 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
         #session-name.connected {
             color: var(--vscode-foreground);
             font-weight: bold;
+        }
+        #session-start-btn {
+            margin-left: auto;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            border: none;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        #session-start-btn:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+        #session-name.connected ~ #session-start-btn {
+            display: none;
         }
         #output-log {
             margin-top: 8px;
@@ -511,6 +534,7 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     <div id="session-bar">
         <div id="status-dot"></div>
         <span id="session-name">ターミナル未接続</span>
+        <button id="session-start-btn">セッション開始</button>
     </div>
     <div id="capability-bar">
         <div class="cap-item">
@@ -570,6 +594,10 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
     </div>
     <script>
         const vscodeApi = acquireVsCodeApi();
+        const sessionStartBtn = document.getElementById('session-start-btn');
+        sessionStartBtn.addEventListener('click', () => {
+            vscodeApi.postMessage({ type: 'startSession' });
+        });
         const capTerminalDot = document.getElementById('cap-terminal-dot');
         const capTerminalLabel = document.getElementById('cap-terminal-label');
         const capAiDot = document.getElementById('cap-ai-dot');
@@ -782,10 +810,12 @@ export class SidecarPanel implements vscode.WebviewViewProvider {
                     dot.classList.add('connected');
                     label.classList.add('connected');
                     label.textContent = name;
+                    sessionStartBtn.style.display = 'none';
                 } else {
                     dot.classList.remove('connected');
                     label.classList.remove('connected');
                     label.textContent = 'ターミナル未接続';
+                    sessionStartBtn.style.display = '';
                 }
             } else if (msg.type === 'commandCard') {
                 // 新コマンド開始時にマスク通知をリセット

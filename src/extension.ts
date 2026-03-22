@@ -90,6 +90,21 @@ export function activate(context: vscode.ExtensionContext): void {
         })
     );
 
+    // 翻訳セッション起動コマンドの登録（コマンドパレット・sidecar ボタン共用）
+    context.subscriptions.push(
+        vscode.commands.registerCommand('shirouto-code.startSession', () => {
+            if (managedTerminal) {
+                managedTerminal.show();
+                return;
+            }
+            const terminal = vscode.window.createTerminal({ name: TRANSLATION_SESSION_NAME });
+            managedTerminal = terminal;
+            terminal.show();
+        })
+    );
+
+    provider.onStartSession = () => vscode.commands.executeCommand('shirouto-code.startSession');
+
     // PTY 翻訳セッション起動コマンドの登録
     context.subscriptions.push(
         vscode.commands.registerCommand('shirouto-code.startPtySession', () => {
