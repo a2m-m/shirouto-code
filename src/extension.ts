@@ -9,6 +9,7 @@ import { SecretMasker } from './SecretMasker';
 import { HistoryStore } from './HistoryStore';
 import { QuestionHandler, geminiErrorToMessage } from './QuestionHandler';
 import type { ParsedLine } from './TerminalOutputParser';
+import { parseMarker } from './TerminalOutputParser';
 
 const TRANSLATION_SESSION_NAME = 'シロートコード翻訳セッション';
 const PTY_SESSION_NAME = 'シロートコード PTY セッション';
@@ -144,6 +145,52 @@ export function activate(context: vscode.ExtensionContext): void {
                 if (!isManagedTerminal(event.terminal)) {
                     return;
                 }
+
+                // PTY セッション時: ZshHookInjector が埋め込んだマーカーでコマンド境界を検知
+                // Shell Integration イベントが発火しない環境でも動作するためのフォールバック
+                if (activePty !== undefined) {
+                    const marker = parseMarker(event.data);
+                    if (marker?.type === 'start') {
+                        currentCommandLines = [];
+                        parser.notifyCommandStart();
+                        if (marker.command?.trim()) {
+                            const customRules = vscode.workspace
+                                .getConfiguration('shirouto-code')
+                                .get<CustomDangerRule[]>('customDangerCommands', []);
+                            provider.showCommandCard(explain(marker.command.trim(), customRules));
+                        }
+                    } else if (marker?.type === 'end') {
+                        const boundary = parser.notifyCommandEnd(marker.exitCode);
+                        if (boundary.type === 'end') {
+                            provider.notifyCommandEnd(boundary.exitCode);
+                        }
+                        const flushed = parser.flush();
+                        if (flushed.length > 0) {
+                            currentCommandLines.push(...flushed);
+                            provider.appendOutput(flushed);
+                        }
+                        const summary = summarize(currentCommandLines, marker.exitCode);
+                        provider.showResultCard(summary);
+
+                        const config = vscode.workspace.getConfiguration('shirouto-code');
+                        const enableAiSend = config.get<boolean>('enableAiSend', true);
+                        if (enableAiSend) {
+                            const outputText = currentCommandLines.map(l => l.text).join('\n');
+                            if (outputText.trim()) {
+                                const { masked, hasMasked } = SecretMasker.fromConfig().mask(outputText);
+                                if (hasMasked) {
+                                    provider.showMaskNotice();
+                                }
+                                translator.translateBatch(masked).then(pair => {
+                                    provider.showTranslation(pair);
+                                }).catch(() => { /* 翻訳失敗は無視 */ });
+                            }
+                        }
+                        currentCommandLines = [];
+                    }
+                }
+
+                // マーカーは ANSI_RE によって除去されるため、通常行の処理は常に実行する
                 const lines = parser.push(event.data);
                 if (lines.length > 0) {
                     currentCommandLines.push(...lines);
