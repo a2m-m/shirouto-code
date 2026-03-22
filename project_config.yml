@@ -26,9 +26,9 @@ project:
 # runtime: 実行環境の設定
 # ---------------------------------------------------------------------------
 runtime:
-  mode: "docker"                      # "docker" | "host"
-  docker_image: "your-image:tag"      # TODO: 必須（mode=docker の場合） — イメージを指定する (例: "your-image:tag")
-  host_setup_steps: []                # mode=host の場合推奨 (例: ["python -m venv .venv", "pip install -r requirements.txt"])
+  mode: "host"                        # "docker" | "host"
+  docker_image: ""                    # mode=docker の場合に指定
+  host_setup_steps: []                # セットアップは ci.yml の extension-build ジョブで実施
 
 # ---------------------------------------------------------------------------
 # commands: os_scripts/run が実行するコマンド定義
