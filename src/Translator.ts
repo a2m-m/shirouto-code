@@ -14,6 +14,14 @@ interface DictionaryEntry {
 
 const DICT: DictionaryEntry[] = localDictionary as DictionaryEntry[];
 
+/**
+ * 辞書置換後のテキストに未翻訳の英語長文が残っているか判定する。
+ * ASCII 単語（2文字以上）が3つ以上連続している場合を「有意な英語」とみなす。
+ */
+function hasSignificantEnglish(text: string): boolean {
+    return /(?:^|[ \t])([A-Za-z]{2,}[ \t]){3,}[A-Za-z]{2,}/m.test(text);
+}
+
 export class Translator {
     private readonly gemini: GeminiClient;
 
@@ -43,7 +51,8 @@ export class Translator {
                 matched = true;
             }
         }
-        if (matched) {
+        // 辞書でマッチしても未翻訳の英語長文が残る場合は Gemini にフォールバック
+        if (matched && !hasSignificantEnglish(translated)) {
             return { original: text, translated };
         }
 
@@ -88,8 +97,8 @@ export class Translator {
             }
         }
 
-        // 辞書で全置換できた場合はそのまま返す
-        if (matched && translated !== trimmed) {
+        // 辞書で置換済みかつ未翻訳の英語長文が残っていなければそのまま返す
+        if (matched && translated !== trimmed && !hasSignificantEnglish(translated)) {
             return { original: text, translated };
         }
 
