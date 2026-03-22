@@ -38,6 +38,10 @@
       {
         "command": "shirouto-code.focusQuestionInput",
         "title": "シロートコード: 質問入力欄にフォーカス"
+      },
+      {
+        "command": "shirouto-code.selectModel",
+        "title": "シロートコード: AI モデルを選択"
       }
     ],
     "keybindings": [
@@ -80,6 +84,11 @@
           "type": "string",
           "default": "",
           "description": "Gemini API キー（Google AI Studio から取得）"
+        },
+        "shirouto-code.geminiModel": {
+          "type": "string",
+          "default": "gemini-2.0-flash",
+          "description": "使用する Gemini モデル名（コマンドパレット: 「シロートコード: AI モデルを選択」で最新モデル一覧から選択できます）"
         },
         "shirouto-code.customDangerCommands": {
           "type": "array",
