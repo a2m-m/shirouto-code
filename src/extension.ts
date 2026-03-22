@@ -8,6 +8,7 @@ import { Translator } from './Translator';
 import { SecretMasker } from './SecretMasker';
 import { HistoryStore } from './HistoryStore';
 import { QuestionHandler, geminiErrorToMessage } from './QuestionHandler';
+import { GeminiClient } from './GeminiClient';
 import type { ParsedLine } from './TerminalOutputParser';
 import { parseMarker } from './TerminalOutputParser';
 
@@ -15,6 +16,11 @@ const TRANSLATION_SESSION_NAME = 'シロートコード翻訳セッション';
 const PTY_SESSION_NAME = 'シロートコード PTY セッション';
 
 export function activate(context: vscode.ExtensionContext): void {
+    const out = vscode.window.createOutputChannel('シロートコード');
+    out.appendLine('[activate] 拡張機能が起動しました');
+    context.subscriptions.push(out);
+    vscode.window.showInformationMessage('シロートコード: 起動しました ✓');
+
     const provider = new SidecarPanel(context.extensionUri);
     const parser = new TerminalOutputParser();
     const historyStore = new HistoryStore(context.globalStorageUri);
@@ -90,6 +96,46 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('shirouto-code.focusQuestionInput', () => {
             vscode.commands.executeCommand('workbench.view.extension.shirouto-code');
             provider.focusQuestionInput();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('shirouto-code.selectModel', async () => {
+            const config = vscode.workspace.getConfiguration('shirouto-code');
+            const apiKey = config.get<string>('geminiApiKey', '');
+            if (!apiKey || apiKey.trim() === '') {
+                vscode.window.showErrorMessage(
+                    'シロートコード: Gemini API キーが設定されていません。先に shirouto-code.geminiApiKey を設定してください。'
+                );
+                return;
+            }
+            const currentModel = config.get<string>('geminiModel', 'gemini-2.0-flash');
+            await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: 'モデル一覧を取得中...', cancellable: false },
+                async () => {
+                    let models: string[];
+                    try {
+                        models = await GeminiClient.listModels(apiKey.trim());
+                    } catch (err) {
+                        vscode.window.showErrorMessage(
+                            `シロートコード: ${err instanceof Error ? err.message : String(err)}`
+                        );
+                        return;
+                    }
+                    const items = models.map(m => ({
+                        label: m,
+                        description: m === currentModel ? '(現在選択中)' : undefined
+                    }));
+                    const picked = await vscode.window.showQuickPick(items, {
+                        title: 'Gemini モデルを選択',
+                        placeHolder: '使用するモデルを選んでください',
+                    });
+                    if (picked) {
+                        await config.update('geminiModel', picked.label, vscode.ConfigurationTarget.Global);
+                        vscode.window.showInformationMessage(`シロートコード: モデルを ${picked.label} に変更しました。`);
+                    }
+                }
+            );
         })
     );
 
@@ -223,9 +269,15 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     if (typeof win.onDidWriteTerminalData === 'function') {
+        out.appendLine('[terminalData] API 利用可能');
         context.subscriptions.push(
             win.onDidWriteTerminalData((event) => {
-                if (!isManagedTerminal(event.terminal)) {
+                const managed = isManagedTerminal(event.terminal);
+                out.appendLine(`[terminalData] fired terminal="${event.terminal.name}" managed=${managed}`);
+                if (managed) {
+                    vscode.window.showInformationMessage(`シロートコード: terminalData 受信 managed=${managed}`);
+                }
+                if (!managed) {
                     return;
                 }
 
@@ -286,9 +338,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // コマンド境界検出（VS Code 1.90+: shell integration events）
     if (typeof vscode.window.onDidStartTerminalShellExecution === 'function') {
+        out.appendLine('[shellIntegration] API 利用可能');
         context.subscriptions.push(
             vscode.window.onDidStartTerminalShellExecution((e) => {
-                if (!isManagedTerminal(e.terminal)) {
+                const managed = isManagedTerminal(e.terminal);
+                out.appendLine(`[shellIntegration] fired terminal="${e.terminal.name}" managed=${managed}`);
+                vscode.window.showInformationMessage(`シロートコード: shellExec 受信 managed=${managed}`);
+                if (!managed) {
                     return;
                 }
                 currentCommandLines = [];
